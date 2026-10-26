@@ -1,0 +1,389 @@
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import Lenis from 'lenis';
+import { AnimatePresence, motion } from 'framer-motion';
+import { CheckCircle2 } from 'lucide-react';
+import {
+  AppPage,
+  DailyContentEntry,
+  DailyTargets,
+  InputStep,
+  PerformanceTab,
+  PeriodFilter,
+} from './types/content';
+import {
+  addSavedProject,
+  clearDraft,
+  createEmptyEntry,
+  exportBackupJSON,
+  exportEntriesToCSV,
+  formatDateID,
+  formatWhatsAppReport,
+  getTodayDateString,
+  loadDraft,
+  loadEntries,
+  loadSavedProjects,
+  loadTargets,
+  normalizeEntry,
+  saveDraft,
+  saveEntries,
+  saveTargets,
+} from './utils/storage';
+import { Navbar } from './components/Navbar';
+import { HeroOverview } from './components/HeroOverview';
+import { DailyInputForm } from './components/DailyInputForm';
+import { PerformanceInsights } from './components/PerformanceInsights';
+import { HistorySection } from './components/HistorySection';
+import { Footer } from './components/Footer';
+
+function parseHashToPage(): AppPage {
+  const h = window.location.hash.replace('#', '').toLowerCase();
+  if (h === 'input' || h === 'performa' || h === 'riwayat' || h === 'beranda') {
+    return h;
+  }
+  return 'beranda';
+}
+
+export const App: React.FC = () => {
+  const [activePage, setActivePage] = useState<AppPage>(() => parseHashToPage());
+  const [inputStep, setInputStep] = useState<InputStep>('distribusi');
+  const [perfTab, setPerfTab] = useState<PerformanceTab>('satuan');
+
+  const [entries, setEntries] = useState<DailyContentEntry[]>(() => loadEntries());
+  const [targets, setTargets] = useState<DailyTargets>(() => loadTargets());
+  const [savedProjects, setSavedProjects] = useState<string[]>(() => loadSavedProjects());
+  const [period, setPeriod] = useState<PeriodFilter>('30d');
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const lenisRef = useRef<Lenis | null>(null);
+
+  const [form, setForm] = useState<DailyContentEntry>(() => {
+    const draft = loadDraft();
+    if (draft) return draft;
+    const existingToday = loadEntries().find((e) => e.date === getTodayDateString());
+    if (existingToday) return existingToday;
+    return createEmptyEntry(getTodayDateString());
+  });
+
+  // Initialize Lenis Smooth Scroll
+  useEffect(() => {
+    const lenis = new Lenis({
+      duration: 1.05,
+      easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+      orientation: 'vertical',
+      gestureOrientation: 'vertical',
+      smoothWheel: true,
+      wheelMultiplier: 1,
+      touchMultiplier: 2,
+    });
+    lenisRef.current = lenis;
+
+    let rafId = 0;
+    function raf(time: number) {
+      lenis.raf(time);
+      rafId = requestAnimationFrame(raf);
+    }
+    rafId = requestAnimationFrame(raf);
+
+    const onHashChange = () => {
+      setActivePage(parseHashToPage());
+    };
+    window.addEventListener('hashchange', onHashChange);
+
+    return () => {
+      window.removeEventListener('hashchange', onHashChange);
+      cancelAnimationFrame(rafId);
+      lenis.destroy();
+    };
+  }, []);
+
+  const navigateTo = (page: AppPage, nextPerfTab?: PerformanceTab) => {
+    setActivePage(page);
+    if (nextPerfTab) setPerfTab(nextPerfTab);
+    window.history.replaceState(null, '', `#${page}`);
+    if (lenisRef.current) {
+      lenisRef.current.scrollTo(0, { immediate: false });
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  // Auto-save form draft
+  useEffect(() => {
+    saveDraft(form);
+  }, [form]);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+  };
+
+  useEffect(() => {
+    if (!toastMessage) return;
+    const timer = setTimeout(() => setToastMessage(null), 3200);
+    return () => clearTimeout(timer);
+  }, [toastMessage]);
+
+  const isEditingExisting = useMemo(
+    () => entries.some((e) => e.id === form.id),
+    [entries, form.id]
+  );
+
+  const existingForSelectedDate = useMemo(
+    () => entries.find((e) => e.date === form.date),
+    [entries, form.date]
+  );
+
+  const handleQuickInputToday = () => {
+    const today = getTodayDateString();
+    const todaySaved = entries.find((e) => e.date === today);
+    if (todaySaved) {
+      setForm(todaySaved);
+    } else {
+      setForm((prev) => ({ ...prev, date: today }));
+    }
+    setInputStep('distribusi');
+    navigateTo('input');
+  };
+
+  const handleSave = () => {
+    const nowIso = new Date().toISOString();
+    let updatedList: DailyContentEntry[];
+    let savedRecord: DailyContentEntry;
+
+    const matchById = entries.find((e) => e.id === form.id);
+    const matchByDate = entries.find((e) => e.date === form.date);
+
+    if (matchById) {
+      savedRecord = { ...form, updatedAt: nowIso };
+      updatedList = entries.map((e) => (e.id === form.id ? savedRecord : e));
+    } else if (matchByDate) {
+      savedRecord = {
+        ...form,
+        id: matchByDate.id,
+        createdAt: matchByDate.createdAt,
+        updatedAt: nowIso,
+      };
+      updatedList = entries.map((e) => (e.id === matchByDate.id ? savedRecord : e));
+    } else {
+      savedRecord = { ...form, createdAt: nowIso, updatedAt: nowIso };
+      updatedList = [savedRecord, ...entries];
+    }
+
+    saveEntries(updatedList);
+    setEntries(loadEntries());
+    setForm(savedRecord);
+    clearDraft();
+
+    if (form.projectName.trim()) {
+      setSavedProjects(addSavedProject(form.projectName));
+    }
+
+    showToast(`Laporan ${formatDateID(savedRecord.date)} berhasil disimpan`);
+  };
+
+  const handleResetNew = () => {
+    const fresh = createEmptyEntry(getTodayDateString());
+    setForm(fresh);
+    setInputStep('distribusi');
+    clearDraft();
+    showToast('Formulir direset ke pengaturan awal');
+  };
+
+  const handleEditEntry = (entry: DailyContentEntry) => {
+    setForm(entry);
+    setInputStep('distribusi');
+    navigateTo('input');
+    showToast(`Memuat laporan ${formatDateID(entry.date)} untuk diedit`);
+  };
+
+  const handleDeleteEntry = (id: string) => {
+    const next = entries.filter((e) => e.id !== id);
+    saveEntries(next);
+    setEntries(loadEntries());
+    if (form.id === id) {
+      setForm(createEmptyEntry(getTodayDateString()));
+    }
+    showToast('Laporan harian berhasil dihapus');
+  };
+
+  const handleCopyWhatsApp = async (entry: DailyContentEntry) => {
+    const text = formatWhatsAppReport(entry);
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast('Format laporan WhatsApp berhasil disalin');
+    } catch {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+      showToast('Format laporan WhatsApp berhasil disalin');
+    }
+  };
+
+  const handleUpdateTargets = (nextTargets: DailyTargets) => {
+    setTargets(nextTargets);
+    saveTargets(nextTargets);
+  };
+
+  const handleImportJSON = (imported: DailyContentEntry[]) => {
+    const map = new Map<string, DailyContentEntry>();
+    for (const item of entries) {
+      map.set(item.date, item);
+    }
+    for (const item of imported) {
+      if (item && typeof item.date === 'string') {
+        map.set(item.date, normalizeEntry(item));
+      }
+    }
+    const merged = Array.from(map.values());
+    saveEntries(merged);
+    setEntries(loadEntries());
+    showToast(`${imported.length} data laporan berhasil diimpor`);
+  };
+
+  return (
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: '#ffffff' }}>
+      <Navbar
+        activePage={activePage}
+        onChangePage={(p) => navigateTo(p)}
+        inputStep={inputStep}
+        onChangeInputStep={(s) => {
+          setInputStep(s);
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
+        perfTab={perfTab}
+        onChangePerfTab={(t) => {
+          setPerfTab(t);
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
+        totalSaved={entries.length}
+        onQuickInputToday={handleQuickInputToday}
+        onExportCSV={() => exportEntriesToCSV(entries)}
+      />
+
+      <main style={{ flex: 1 }}>
+        <AnimatePresence mode="wait">
+          {activePage === 'beranda' && (
+            <motion.div
+              key="page-beranda"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.22 }}
+            >
+              <HeroOverview
+                entries={entries}
+                period={period}
+                onChangePeriod={setPeriod}
+                onNavigate={navigateTo}
+              />
+            </motion.div>
+          )}
+
+          {activePage === 'input' && (
+            <motion.div
+              key="page-input"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.22 }}
+            >
+              <DailyInputForm
+                form={form}
+                step={inputStep}
+                onChangeStep={(s) => {
+                  setInputStep(s);
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                isEditingExisting={isEditingExisting}
+                existingForSelectedDate={existingForSelectedDate}
+                savedProjects={savedProjects}
+                targets={targets}
+                onChangeForm={(updater) => setForm((prev) => updater(prev))}
+                onSave={handleSave}
+                onResetNew={handleResetNew}
+                onLoadExistingDate={handleEditEntry}
+                onCopyWhatsApp={handleCopyWhatsApp}
+                onUpdateTargets={handleUpdateTargets}
+              />
+            </motion.div>
+          )}
+
+          {activePage === 'performa' && (
+            <motion.div
+              key="page-performa"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.22 }}
+            >
+              <PerformanceInsights
+                entries={entries}
+                targets={targets}
+                activeTab={perfTab}
+              />
+            </motion.div>
+          )}
+
+          {activePage === 'riwayat' && (
+            <motion.div
+              key="page-riwayat"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.22 }}
+            >
+              <HistorySection
+                entries={entries}
+                onEditEntry={handleEditEntry}
+                onDeleteEntry={handleDeleteEntry}
+                onCopyWhatsApp={handleCopyWhatsApp}
+                onExportCSV={() => exportEntriesToCSV(entries)}
+                onExportJSON={() => exportBackupJSON(entries)}
+                onImportJSON={handleImportJSON}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </main>
+
+      <Footer />
+
+      {/* Apple Clean Pill Toast Notification */}
+      <AnimatePresence>
+        {toastMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: 24, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 16, scale: 0.96 }}
+            transition={{ duration: 0.22 }}
+            style={{
+              position: 'fixed',
+              bottom: '24px',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 100,
+              backgroundColor: '#1d1d1f',
+              color: '#ffffff',
+              padding: '11px 20px',
+              borderRadius: '9999px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '9px',
+              fontSize: '0.85rem',
+              fontWeight: 600,
+              boxShadow: '0 10px 30px rgba(0, 0, 0, 0.16)',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <CheckCircle2 size={16} color="#4ade80" />
+            <span>{toastMessage}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+export default App;
