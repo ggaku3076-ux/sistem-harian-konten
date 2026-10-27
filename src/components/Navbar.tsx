@@ -16,11 +16,13 @@ import {
   Sparkles,
   Target,
 } from 'lucide-react';
-import { AppPage, InputStep, PerformanceTab } from '../types/content';
+import { AppPage, InputStep, PerformanceTab, TodoTab } from '../types/content';
 
 interface NavbarProps {
   activePage: AppPage;
   onChangePage: (page: AppPage) => void;
+  todoTab: TodoTab;
+  onChangeTodoTab: (tab: TodoTab) => void;
   inputStep: InputStep;
   onChangeInputStep: (step: InputStep) => void;
   perfTab: PerformanceTab;
@@ -34,6 +36,8 @@ interface NavbarProps {
 export const Navbar: React.FC<NavbarProps> = ({
   activePage,
   onChangePage,
+  todoTab,
+  onChangeTodoTab,
   inputStep,
   onChangeInputStep,
   perfTab,
@@ -207,8 +211,76 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
       </div>
 
-      {/* SECONDARY MULTI-NAVBAR (SUB-SECTIONS FOR INPUT & PERFORMA) */}
+      {/* SECONDARY MULTI-NAVBAR (SUB-SECTIONS FOR TODO, INPUT, & PERFORMA) */}
       <AnimatePresence mode="wait">
+        {activePage === 'todo' && (
+          <motion.div
+            key="subnav-todo"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.2 }}
+            style={{
+              borderTop: '1px solid var(--border-light)',
+              backgroundColor: 'rgba(245, 245, 247, 0.78)',
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              className="container"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '12px',
+                paddingTop: '8px',
+                paddingBottom: '8px',
+                overflowX: 'auto',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                {(
+                  [
+                    { id: 'checklist', label: 'Checklist & Tanggal', icon: ListChecks },
+                    { id: 'satuan', label: 'Performa Satu-Satu', icon: Target },
+                    { id: 'mingguan', label: 'Performa Mingguan', icon: CalendarRange },
+                    { id: 'gabungan', label: 'Performa Gabungan', icon: PieChart },
+                  ] as { id: TodoTab; label: string; icon: LucideIcon }[]
+                ).map((t) => {
+                  const Icon = t.icon;
+                  const active = todoTab === t.id;
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => onChangeTodoTab(t.id)}
+                      style={{
+                        padding: '6px 14px',
+                        borderRadius: '9999px',
+                        fontSize: '0.79rem',
+                        fontWeight: 600,
+                        backgroundColor: active ? '#ffffff' : 'transparent',
+                        color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
+                        border: active ? '1px solid var(--border-strong)' : '1px solid transparent',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      <Icon size={13} />
+                      <span>{t.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                Khusus Todo Harian &bull; Terpisah dari Metrik Sosmed
+              </span>
+            </div>
+          </motion.div>
+        )}
+
         {activePage === 'input' && (
           <motion.div
             key="subnav-input"

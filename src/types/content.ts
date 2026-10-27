@@ -10,6 +10,8 @@ export type InputStep = 'distribusi' | 'engagement' | 'prospek';
 
 export type PerformanceTab = 'satuan' | 'mingguan' | 'gabungan';
 
+export type TodoTab = 'checklist' | 'satuan' | 'mingguan' | 'gabungan';
+
 export type TodoCategory =
   | 'Konten'
   | 'Sosmed'

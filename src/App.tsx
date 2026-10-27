@@ -10,6 +10,7 @@ import {
   InputStep,
   PerformanceTab,
   PeriodFilter,
+  TodoTab,
 } from './types/content';
 import {
   addSavedProject,
@@ -58,6 +59,7 @@ function parseHashToPage(): AppPage {
 
 export const App: React.FC = () => {
   const [activePage, setActivePage] = useState<AppPage>(() => parseHashToPage());
+  const [todoTab, setTodoTab] = useState<TodoTab>('checklist');
   const [inputStep, setInputStep] = useState<InputStep>('distribusi');
   const [perfTab, setPerfTab] = useState<PerformanceTab>('satuan');
 
@@ -390,6 +392,11 @@ export const App: React.FC = () => {
       <Navbar
         activePage={activePage}
         onChangePage={(p) => navigateTo(p)}
+        todoTab={todoTab}
+        onChangeTodoTab={(t) => {
+          setTodoTab(t);
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
         inputStep={inputStep}
         onChangeInputStep={(s) => {
           setInputStep(s);
@@ -436,6 +443,11 @@ export const App: React.FC = () => {
               transition={{ duration: 0.22 }}
             >
               <TodoSection
+                activeTab={todoTab}
+                onChangeTab={(t) => {
+                  setTodoTab(t);
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
                 currentLog={currentTodoLog}
                 allLogs={todoLogs}
                 onChangeDate={handleChangeTodoDate}

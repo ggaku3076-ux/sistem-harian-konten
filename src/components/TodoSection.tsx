@@ -11,15 +11,19 @@ import {
   Copy,
   Edit3,
   ListChecks,
+  PieChart,
   Plus,
   Save,
   Trash2,
   X,
 } from 'lucide-react';
-import { DailyTodoLog, TodoCategory, TodoItem } from '../types/content';
+import { DailyTodoLog, TodoCategory, TodoItem, TodoTab } from '../types/content';
 import { formatDateID, getTodayDateString, shiftDateString } from '../utils/storage';
+import { TodoPerformanceView } from './TodoPerformanceView';
 
 interface TodoSectionProps {
+  activeTab: TodoTab;
+  onChangeTab: (tab: TodoTab) => void;
   currentLog: DailyTodoLog;
   allLogs: DailyTodoLog[];
   onChangeDate: (date: string) => void;
@@ -49,6 +53,8 @@ function getNowTimeHHMM(): string {
 }
 
 export const TodoSection: React.FC<TodoSectionProps> = ({
+  activeTab,
+  onChangeTab,
   currentLog,
   allLogs,
   onChangeDate,
@@ -188,7 +194,17 @@ export const TodoSection: React.FC<TodoSectionProps> = ({
       }}
     >
       <div className="container">
-        {/* Header + Bebas Pilih / Geser Tanggal Laporan Berapapun */}
+        {activeTab !== 'checklist' ? (
+          <TodoPerformanceView
+            activeTab={activeTab}
+            currentLog={currentLog}
+            allLogs={allLogs}
+            onChangeDate={onChangeDate}
+            onChangeTab={onChangeTab}
+          />
+        ) : (
+          <>
+            {/* Header + Bebas Pilih / Geser Tanggal Laporan Berapapun */}
         <div
           style={{
             display: 'flex',
@@ -873,6 +889,22 @@ export const TodoSection: React.FC<TodoSectionProps> = ({
                   <Copy size={14} />
                   <span>Salin Laporan Todo ke WA</span>
                 </button>
+
+                <button
+                  type="button"
+                  onClick={() => onChangeTab('satuan')}
+                  className="btn-ghost"
+                  style={{
+                    width: '100%',
+                    padding: '9px 14px',
+                    fontSize: '0.82rem',
+                    color: 'var(--accent)',
+                    backgroundColor: 'var(--accent-soft)',
+                  }}
+                >
+                  <PieChart size={14} />
+                  <span>Lihat Performa Todo (Satu-Satu / Mingguan / Gabungan)</span>
+                </button>
               </div>
             </div>
 
@@ -993,6 +1025,8 @@ export const TodoSection: React.FC<TodoSectionProps> = ({
             </div>
           </div>
         </div>
+          </>
+        )}
       </div>
     </section>
   );
