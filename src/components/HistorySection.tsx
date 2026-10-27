@@ -16,6 +16,7 @@ import { DailyContentEntry, PropertyCategory } from '../types/content';
 import {
   calculateEngagementRate,
   formatDateID,
+  formatLiveDuration,
   formatNumberID,
   getActivePlatformCount,
   getCategoryLabel,
@@ -322,7 +323,7 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
                       {entry.isLive ? (
                         <span className="pill-badge pill-green">
                           <Radio size={12} />
-                          Live ({entry.liveDurationMinutes}m)
+                          Live ({formatLiveDuration(entry.liveDurationMinutes)})
                         </span>
                       ) : (
                         <span className="pill-badge pill-neutral">Tidak Live</span>

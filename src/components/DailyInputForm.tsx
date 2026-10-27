@@ -39,6 +39,7 @@ import {
   calculateEngagementRate,
   calculatePlatformER,
   formatDateID,
+  formatLiveDuration,
   formatNumberID,
   getActivePlatformCount,
   getActivePlatformNames,
@@ -105,8 +106,9 @@ const NumberStepper: React.FC<{
       <input
         type="number"
         min={min}
+        placeholder="0"
         className="stepper-input"
-        value={safeVal === 0 ? '0' : safeVal}
+        value={safeVal === 0 ? '' : safeVal}
         onChange={(e) => {
           const parsed = parseInt(e.target.value, 10);
           onChange(Number.isNaN(parsed) ? 0 : Math.max(min, parsed));
@@ -141,6 +143,7 @@ export const DailyInputForm: React.FC<DailyInputFormProps> = ({
 }) => {
   const [showTargetConfig, setShowTargetConfig] = useState(false);
   const [activeMetricTab, setActiveMetricTab] = useState<SocialPlatformKey | 'all'>('tiktok');
+  const [durationMode, setDurationMode] = useState<'menit' | 'jam_menit'>('menit');
 
   const activePlatformCount = getActivePlatformCount(form);
   const activePlatformNames = getActivePlatformNames(form);
@@ -1149,45 +1152,202 @@ export const DailyInputForm: React.FC<DailyInputFormProps> = ({
                                 alignItems: 'center',
                                 justifyContent: 'space-between',
                                 marginBottom: '8px',
+                                gap: '8px',
                               }}
                             >
                               <span className="apple-label" style={{ marginBottom: 0 }}>
-                                Durasi Live (Menit)
+                                Durasi Live (Custom)
                               </span>
-                              <div style={{ display: 'flex', gap: '4px' }}>
-                                {[30, 60, 90, 120].map((m) => (
-                                  <button
-                                    key={m}
-                                    type="button"
-                                    onClick={() =>
-                                      onChangeForm((prev) => ({ ...prev, liveDurationMinutes: m }))
-                                    }
-                                    style={{
-                                      fontSize: '0.7rem',
-                                      padding: '2px 7px',
-                                      borderRadius: '9999px',
-                                      backgroundColor:
-                                        form.liveDurationMinutes === m
-                                          ? '#1d1d1f'
-                                          : 'var(--bg-secondary)',
-                                      color:
-                                        form.liveDurationMinutes === m
-                                          ? '#ffffff'
-                                          : 'var(--text-secondary)',
-                                    }}
-                                  >
-                                    {m}m
-                                  </button>
-                                ))}
+                              <div
+                                style={{
+                                  display: 'inline-flex',
+                                  backgroundColor: 'var(--bg-secondary)',
+                                  padding: '2px',
+                                  borderRadius: '9999px',
+                                  border: '1px solid var(--border-light)',
+                                }}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => setDurationMode('menit')}
+                                  style={{
+                                    fontSize: '0.68rem',
+                                    fontWeight: 600,
+                                    padding: '2px 8px',
+                                    borderRadius: '9999px',
+                                    backgroundColor:
+                                      durationMode === 'menit' ? '#1d1d1f' : 'transparent',
+                                    color:
+                                      durationMode === 'menit' ? '#ffffff' : 'var(--text-secondary)',
+                                  }}
+                                >
+                                  Menit
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setDurationMode('jam_menit')}
+                                  style={{
+                                    fontSize: '0.68rem',
+                                    fontWeight: 600,
+                                    padding: '2px 8px',
+                                    borderRadius: '9999px',
+                                    backgroundColor:
+                                      durationMode === 'jam_menit' ? '#1d1d1f' : 'transparent',
+                                    color:
+                                      durationMode === 'jam_menit'
+                                        ? '#ffffff'
+                                        : 'var(--text-secondary)',
+                                  }}
+                                >
+                                  Jam + Menit
+                                </button>
                               </div>
                             </div>
-                            <NumberStepper
-                              value={form.liveDurationMinutes}
-                              step={15}
-                              onChange={(val) =>
-                                onChangeForm((prev) => ({ ...prev, liveDurationMinutes: val }))
-                              }
-                            />
+
+                            {durationMode === 'menit' ? (
+                              <div>
+                                <div style={{ position: 'relative' }}>
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    placeholder="Ketik bebas (misal: 42)"
+                                    className="apple-input tabular-num"
+                                    style={{ paddingRight: '58px', fontWeight: 700 }}
+                                    value={
+                                      form.liveDurationMinutes === 0 ? '' : form.liveDurationMinutes
+                                    }
+                                    onChange={(e) =>
+                                      onChangeForm((prev) => ({
+                                        ...prev,
+                                        liveDurationMinutes: Math.max(
+                                          0,
+                                          parseInt(e.target.value, 10) || 0
+                                        ),
+                                      }))
+                                    }
+                                  />
+                                  <span
+                                    style={{
+                                      position: 'absolute',
+                                      right: '14px',
+                                      top: '50%',
+                                      transform: 'translateY(-50%)',
+                                      fontSize: '0.78rem',
+                                      fontWeight: 600,
+                                      color: 'var(--text-muted)',
+                                      pointerEvents: 'none',
+                                    }}
+                                  >
+                                    menit
+                                  </span>
+                                </div>
+                                {form.liveDurationMinutes >= 60 && (
+                                  <div
+                                    className="tabular-num"
+                                    style={{
+                                      fontSize: '0.74rem',
+                                      color: 'var(--text-secondary)',
+                                      marginTop: '5px',
+                                    }}
+                                  >
+                                    Setara <strong>{formatLiveDuration(form.liveDurationMinutes)}</strong>
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <div>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                                  <div style={{ position: 'relative' }}>
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      placeholder="0"
+                                      className="apple-input tabular-num"
+                                      style={{ paddingRight: '42px', fontWeight: 700 }}
+                                      value={
+                                        Math.floor(form.liveDurationMinutes / 60) === 0
+                                          ? ''
+                                          : Math.floor(form.liveDurationMinutes / 60)
+                                      }
+                                      onChange={(e) => {
+                                        const hrs = Math.max(0, parseInt(e.target.value, 10) || 0);
+                                        const remMins = form.liveDurationMinutes % 60;
+                                        onChangeForm((prev) => ({
+                                          ...prev,
+                                          liveDurationMinutes: hrs * 60 + remMins,
+                                        }));
+                                      }}
+                                    />
+                                    <span
+                                      style={{
+                                        position: 'absolute',
+                                        right: '11px',
+                                        top: '50%',
+                                        transform: 'translateY(-50%)',
+                                        fontSize: '0.75rem',
+                                        fontWeight: 600,
+                                        color: 'var(--text-muted)',
+                                        pointerEvents: 'none',
+                                      }}
+                                    >
+                                      jam
+                                    </span>
+                                  </div>
+                                  <div style={{ position: 'relative' }}>
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      max={59}
+                                      placeholder="0"
+                                      className="apple-input tabular-num"
+                                      style={{ paddingRight: '42px', fontWeight: 700 }}
+                                      value={
+                                        form.liveDurationMinutes % 60 === 0
+                                          ? ''
+                                          : form.liveDurationMinutes % 60
+                                      }
+                                      onChange={(e) => {
+                                        const mins = Math.min(
+                                          59,
+                                          Math.max(0, parseInt(e.target.value, 10) || 0)
+                                        );
+                                        const hrs = Math.floor(form.liveDurationMinutes / 60);
+                                        onChangeForm((prev) => ({
+                                          ...prev,
+                                          liveDurationMinutes: hrs * 60 + mins,
+                                        }));
+                                      }}
+                                    />
+                                    <span
+                                      style={{
+                                        position: 'absolute',
+                                        right: '11px',
+                                        top: '50%',
+                                        transform: 'translateY(-50%)',
+                                        fontSize: '0.75rem',
+                                        fontWeight: 600,
+                                        color: 'var(--text-muted)',
+                                        pointerEvents: 'none',
+                                      }}
+                                    >
+                                      mnt
+                                    </span>
+                                  </div>
+                                </div>
+                                {form.liveDurationMinutes > 0 && (
+                                  <div
+                                    className="tabular-num"
+                                    style={{
+                                      fontSize: '0.74rem',
+                                      color: 'var(--text-secondary)',
+                                      marginTop: '5px',
+                                    }}
+                                  >
+                                    Total <strong>{form.liveDurationMinutes} menit</strong>
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </div>
 
                           <div>
@@ -1580,8 +1740,10 @@ export const DailyInputForm: React.FC<DailyInputFormProps> = ({
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ color: 'var(--text-secondary)' }}>Live &amp; Prospek</span>
                   <strong className="tabular-num">
-                    {form.isLive ? 'Live' : 'No Live'} &bull;{' '}
-                    {form.hasProspect ? `${form.prospectTotal} Leads` : '0 Leads'}
+                    {form.isLive
+                      ? `Live (${formatLiveDuration(form.liveDurationMinutes)})`
+                      : 'No Live'}{' '}
+                    &bull; {form.hasProspect ? `${form.prospectTotal} Leads` : '0 Leads'}
                   </strong>
                 </div>
               </div>

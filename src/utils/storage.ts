@@ -107,7 +107,7 @@ export function createEmptyEntry(date: string = getTodayDateString()): DailyCont
     marketplacePosted: 0,
     isLive: false,
     livePlatforms: [],
-    liveDurationMinutes: 60,
+    liveDurationMinutes: 0,
     liveViewers: 0,
     engagementByPlatform: {
       tiktok: createEmptyPlatformEngagement(),
@@ -282,6 +282,15 @@ export function formatNumberID(num: number): string {
   return new Intl.NumberFormat('id-ID').format(num || 0);
 }
 
+export function formatLiveDuration(minutes: number): string {
+  const m = Math.max(0, Math.floor(minutes || 0));
+  if (m === 0) return '0 mnt';
+  if (m < 60) return `${m} mnt`;
+  const hrs = Math.floor(m / 60);
+  const rem = m % 60;
+  return rem === 0 ? `${hrs} jam` : `${hrs}j ${rem}m`;
+}
+
 export function formatWhatsAppReport(entry: DailyContentEntry): string {
   const synced = syncTotalEngagement(entry);
   const tt = synced.engagementByPlatform.tiktok;
@@ -298,7 +307,7 @@ export function formatWhatsAppReport(entry: DailyContentEntry): string {
       .join(', ') || 'Belum diposting';
 
   const liveText = synced.isLive
-    ? `SUDAH LIVE (${synced.livePlatforms.join('/') || 'Sosmed'} • ${synced.liveDurationMinutes} mnt • ${formatNumberID(synced.liveViewers)} penonton)`
+    ? `SUDAH LIVE (${synced.livePlatforms.join('/') || 'Sosmed'} • ${formatLiveDuration(synced.liveDurationMinutes)} • ${formatNumberID(synced.liveViewers)} penonton)`
     : 'Tidak Live';
 
   const prospectText = synced.hasProspect
