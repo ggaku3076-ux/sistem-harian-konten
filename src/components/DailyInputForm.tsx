@@ -7,6 +7,8 @@ import {
   Building,
   Calendar,
   Check,
+  ChevronLeft,
+  ChevronRight,
   Copy,
   Edit3,
   Eye,
@@ -48,6 +50,7 @@ import {
   getTodayDateString,
   getTotalInteractions,
   getTotalPostsPublished,
+  shiftDateString,
   syncTotalEngagement,
 } from '../utils/storage';
 
@@ -276,22 +279,86 @@ export const DailyInputForm: React.FC<DailyInputFormProps> = ({
             </h1>
           </div>
 
-          {isEditingExisting && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <span className="pill-badge pill-blue" style={{ padding: '7px 14px' }}>
-                <Edit3 size={14} />
-                Mode Edit: {formatDateID(form.date)}
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px' }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                backgroundColor: '#ffffff',
+                padding: '7px 11px',
+                borderRadius: '16px',
+                border: '1px solid var(--border-light)',
+              }}
+            >
+              <Calendar size={15} color="#1d1d1f" />
+              <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                Tgl Laporan:
               </span>
               <button
                 type="button"
-                onClick={onResetNew}
-                className="btn-secondary"
-                style={{ backgroundColor: '#ffffff', padding: '7px 14px', fontSize: '0.82rem' }}
+                onClick={() =>
+                  onChangeForm((prev) => ({ ...prev, date: shiftDateString(prev.date, -1) }))
+                }
+                className="btn-ghost"
+                style={{ padding: '4px 6px', borderRadius: '8px', backgroundColor: 'var(--bg-secondary)' }}
+                title="Mundur 1 Hari"
               >
-                Buat Baru
+                <ChevronLeft size={14} />
               </button>
+              <input
+                type="date"
+                className="apple-input tabular-num"
+                style={{ width: 'auto', padding: '5px 9px', fontSize: '0.84rem' }}
+                value={form.date}
+                onChange={(e) => {
+                  if (e.target.value) {
+                    onChangeForm((prev) => ({ ...prev, date: e.target.value }));
+                  }
+                }}
+              />
+              <button
+                type="button"
+                onClick={() =>
+                  onChangeForm((prev) => ({ ...prev, date: shiftDateString(prev.date, 1) }))
+                }
+                className="btn-ghost"
+                style={{ padding: '4px 6px', borderRadius: '8px', backgroundColor: 'var(--bg-secondary)' }}
+                title="Maju 1 Hari"
+              >
+                <ChevronRight size={14} />
+              </button>
+              {form.date !== getTodayDateString() && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    onChangeForm((prev) => ({ ...prev, date: getTodayDateString() }))
+                  }
+                  className="btn-ghost"
+                  style={{ padding: '4px 9px', fontSize: '0.75rem' }}
+                >
+                  Hari Ini
+                </button>
+              )}
             </div>
-          )}
+
+            {isEditingExisting && (
+              <>
+                <span className="pill-badge pill-blue" style={{ padding: '7px 14px' }}>
+                  <Edit3 size={14} />
+                  Mode Edit: {formatDateID(form.date)}
+                </span>
+                <button
+                  type="button"
+                  onClick={onResetNew}
+                  className="btn-secondary"
+                  style={{ backgroundColor: '#ffffff', padding: '7px 14px', fontSize: '0.82rem' }}
+                >
+                  Buat Baru
+                </button>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Existing Date Banner */}
@@ -1574,8 +1641,22 @@ export const DailyInputForm: React.FC<DailyInputFormProps> = ({
                   >
                     Pratinjau Laporan
                   </div>
-                  <div style={{ fontSize: '1.1rem', fontWeight: 700, marginTop: '2px' }}>
+                  <div style={{ fontSize: '1.05rem', fontWeight: 700, marginTop: '2px' }}>
                     {formatDateID(form.date)}
+                  </div>
+                  <div style={{ marginTop: '6px' }}>
+                    <input
+                      type="date"
+                      aria-label="Edit Tanggal Laporan"
+                      className="apple-input tabular-num"
+                      style={{ width: 'auto', padding: '4px 8px', fontSize: '0.78rem' }}
+                      value={form.date}
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          onChangeForm((prev) => ({ ...prev, date: e.target.value }));
+                        }
+                      }}
+                    />
                   </div>
                 </div>
                 <span className="pill-badge pill-neutral">

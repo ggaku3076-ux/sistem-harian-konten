@@ -1,6 +1,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
+  Calendar,
   Check,
   Copy,
   Download,
@@ -12,6 +13,7 @@ import {
   Trash2,
   Upload,
   UserCheck,
+  X,
 } from 'lucide-react';
 import { DailyContentEntry, DailyTodoLog, PropertyCategory } from '../types/content';
 import {
@@ -27,6 +29,7 @@ interface HistorySectionProps {
   entries: DailyContentEntry[];
   todoLogs: DailyTodoLog[];
   onEditEntry: (entry: DailyContentEntry) => void;
+  onChangeEntryDate: (id: string, newDate: string) => void;
   onDeleteEntry: (id: string) => void;
   onCopyWhatsApp: (entry: DailyContentEntry) => void;
   onExportCSV: () => void;
@@ -38,6 +41,7 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
   entries,
   todoLogs,
   onEditEntry,
+  onChangeEntryDate,
   onDeleteEntry,
   onCopyWhatsApp,
   onExportCSV,
@@ -45,14 +49,18 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
   onImportJSON,
 }) => {
   const [search, setSearch] = useState('');
+  const [dateFilter, setDateFilter] = useState('');
   const [catFilter, setCatFilter] = useState<'all' | PropertyCategory>('all');
   const [flagFilter, setFlagFilter] = useState<'all' | 'prospect' | 'live'>('all');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [editingDateId, setEditingDateId] = useState<string | null>(null);
+  const [draftDateValue, setDraftDateValue] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return entries.filter((item) => {
+      if (dateFilter && item.date !== dateFilter) return false;
       if (catFilter !== 'all' && item.propertyCategory !== catFilter) return false;
       if (flagFilter === 'prospect' && !item.hasProspect) return false;
       if (flagFilter === 'live' && !item.isLive) return false;
@@ -62,7 +70,7 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
       }
       return true;
     });
-  }, [entries, search, catFilter, flagFilter]);
+  }, [entries, search, dateFilter, catFilter, flagFilter]);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -177,26 +185,49 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
             gap: '12px',
           }}
         >
-          <div style={{ position: 'relative', flex: '1 1 260px', maxWidth: '380px' }}>
-            <Search
-              size={15}
-              color="#86868b"
-              style={{ position: 'absolute', left: '13px', top: '50%', transform: 'translateY(-50%)' }}
-            />
-            <input
-              type="text"
-              placeholder="Cari tanggal, nama perumahan, atau catatan..."
-              className="apple-input"
-              style={{
-                paddingLeft: '36px',
-                paddingRight: '14px',
-                paddingTop: '9px',
-                paddingBottom: '9px',
-                fontSize: '0.86rem',
-              }}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', flex: '1 1 380px' }}>
+            <div style={{ position: 'relative', flex: '1 1 220px', maxWidth: '340px' }}>
+              <Search
+                size={15}
+                color="#86868b"
+                style={{ position: 'absolute', left: '13px', top: '50%', transform: 'translateY(-50%)' }}
+              />
+              <input
+                type="text"
+                placeholder="Cari tanggal, perumahan, catatan..."
+                className="apple-input"
+                style={{
+                  paddingLeft: '36px',
+                  paddingRight: '14px',
+                  paddingTop: '9px',
+                  paddingBottom: '9px',
+                  fontSize: '0.86rem',
+                }}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <input
+                type="date"
+                aria-label="Filter Tanggal Laporan"
+                className="apple-input tabular-num"
+                style={{ width: 'auto', padding: '8px 10px', fontSize: '0.82rem' }}
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value)}
+              />
+              {dateFilter && (
+                <button
+                  type="button"
+                  onClick={() => setDateFilter('')}
+                  className="btn-ghost"
+                  style={{ padding: '6px 10px', fontSize: '0.76rem' }}
+                >
+                  Semua Tgl
+                </button>
+              )}
+            </div>
           </div>
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
@@ -316,9 +347,63 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
                     }}
                   >
                     <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '1.05rem', fontWeight: 700 }}>
-                        {formatDateID(entry.date)}
-                      </span>
+                      {editingDateId === entry.id ? (
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                          <input
+                            type="date"
+                            className="apple-input tabular-num"
+                            style={{ width: 'auto', padding: '5px 9px', fontSize: '0.82rem' }}
+                            value={draftDateValue}
+                            onChange={(e) => setDraftDateValue(e.target.value)}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (draftDateValue && draftDateValue !== entry.date) {
+                                onChangeEntryDate(entry.id, draftDateValue);
+                              }
+                              setEditingDateId(null);
+                            }}
+                            className="btn-primary"
+                            style={{ padding: '6px 11px', fontSize: '0.76rem' }}
+                          >
+                            Simpan Tgl
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditingDateId(null)}
+                            className="btn-ghost"
+                            style={{ padding: '5px' }}
+                            title="Batal"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <span style={{ fontSize: '1.05rem', fontWeight: 700 }}>
+                            {formatDateID(entry.date)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingDateId(entry.id);
+                              setDraftDateValue(entry.date);
+                            }}
+                            className="btn-ghost"
+                            style={{
+                              padding: '3px 8px',
+                              fontSize: '0.73rem',
+                              color: 'var(--accent)',
+                              backgroundColor: 'var(--accent-soft)',
+                            }}
+                            title="Edit tanggal laporan ke tanggal berapapun"
+                          >
+                            <Calendar size={12} />
+                            <span>Ubah Tgl</span>
+                          </button>
+                        </>
+                      )}
                       <span className="pill-badge pill-neutral">
                         {getCategoryLabel(entry.propertyCategory)}
                       </span>

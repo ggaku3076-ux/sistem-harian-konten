@@ -270,6 +270,19 @@ export function calculateEngagementRate(entry: DailyContentEntry): string {
   return `${rate.toFixed(1)}%`;
 }
 
+export function shiftDateString(dateStr: string, deltaDays: number): string {
+  const parts = dateStr.split('-').map(Number);
+  if (parts.length !== 3 || parts.some((n) => Number.isNaN(n))) {
+    return getTodayDateString();
+  }
+  const d = new Date(parts[0], parts[1] - 1, parts[2]);
+  d.setDate(d.getDate() + deltaDays);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export function formatDateID(dateStr: string): string {
   if (!dateStr) return '-';
   const parts = dateStr.split('-').map(Number);

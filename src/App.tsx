@@ -156,6 +156,48 @@ export const App: React.FC = () => {
     setCurrentTodoLog(existing || createDefaultTodoLog(date));
   };
 
+  const handleMoveTodoDate = (oldDate: string, newDate: string) => {
+    const source =
+      oldDate === currentTodoLog.date
+        ? currentTodoLog
+        : todoLogs.find((l) => l.date === oldDate) || createDefaultTodoLog(oldDate);
+
+    const movedLog: DailyTodoLog = {
+      ...source,
+      date: newDate,
+      items: source.items.map((item, idx) => ({
+        ...item,
+        id: `todo-${newDate}-${idx}-${Date.now()}`,
+      })),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const remaining = todoLogs.filter((l) => l.date !== oldDate && l.date !== newDate);
+    const next = [movedLog, ...remaining];
+    saveTodoLogs(next);
+    setTodoLogs(loadTodoLogs());
+    setCurrentTodoLog(movedLog);
+    showToast(`Tanggal laporan Todo diubah ke ${formatDateID(newDate)}`);
+  };
+
+  const handleCopyTodoToDate = (sourceLog: DailyTodoLog, targetDate: string) => {
+    const copiedLog: DailyTodoLog = {
+      ...sourceLog,
+      date: targetDate,
+      items: sourceLog.items.map((item, idx) => ({
+        ...item,
+        id: `todo-${targetDate}-${idx}-${Date.now()}`,
+      })),
+      updatedAt: new Date().toISOString(),
+    };
+    const remaining = todoLogs.filter((l) => l.date !== targetDate);
+    const next = [copiedLog, ...remaining];
+    saveTodoLogs(next);
+    setTodoLogs(loadTodoLogs());
+    setCurrentTodoLog(copiedLog);
+    showToast(`Checklist disalin ke tanggal ${formatDateID(targetDate)}`);
+  };
+
   const handleUpdateCurrentTodo = (updater: (prev: DailyTodoLog) => DailyTodoLog) => {
     setCurrentTodoLog((prev) => {
       const updated = updater(prev);
@@ -199,16 +241,10 @@ export const App: React.FC = () => {
     }
   };
 
-  const todayTodoForOverview = useMemo(() => {
-    const today = getTodayDateString();
-    if (currentTodoLog.date === today) return currentTodoLog;
-    return todoLogs.find((l) => l.date === today) || createDefaultTodoLog(today);
-  }, [currentTodoLog, todoLogs]);
-
   const todayTodoBadge = useMemo(() => {
-    const done = todayTodoForOverview.items.filter((i) => i.completed).length;
-    return `${done}/${todayTodoForOverview.items.length}`;
-  }, [todayTodoForOverview]);
+    const done = currentTodoLog.items.filter((i) => i.completed).length;
+    return `${done}/${currentTodoLog.items.length}`;
+  }, [currentTodoLog]);
 
   const isEditingExisting = useMemo(
     () => entries.some((e) => e.id === form.id),
@@ -242,7 +278,9 @@ export const App: React.FC = () => {
 
     if (matchById) {
       savedRecord = { ...form, updatedAt: nowIso };
-      updatedList = entries.map((e) => (e.id === form.id ? savedRecord : e));
+      updatedList = entries
+        .filter((e) => e.id === form.id || e.date !== form.date)
+        .map((e) => (e.id === form.id ? savedRecord : e));
     } else if (matchByDate) {
       savedRecord = {
         ...form,
@@ -281,6 +319,25 @@ export const App: React.FC = () => {
     setInputStep('distribusi');
     navigateTo('input');
     showToast(`Memuat laporan ${formatDateID(entry.date)} untuk diedit`);
+  };
+
+  const handleChangeEntryDate = (id: string, newDate: string) => {
+    const target = entries.find((e) => e.id === id);
+    if (!target) return;
+    const updatedRecord: DailyContentEntry = {
+      ...target,
+      date: newDate,
+      updatedAt: new Date().toISOString(),
+    };
+    const next = entries
+      .filter((e) => e.id === id || e.date !== newDate)
+      .map((e) => (e.id === id ? updatedRecord : e));
+    saveEntries(next);
+    setEntries(loadEntries());
+    if (form.id === id) {
+      setForm(updatedRecord);
+    }
+    showToast(`Tanggal laporan diubah ke ${formatDateID(newDate)}`);
   };
 
   const handleDeleteEntry = (id: string) => {
@@ -361,7 +418,8 @@ export const App: React.FC = () => {
             >
               <HeroOverview
                 entries={entries}
-                todayTodo={todayTodoForOverview}
+                todayTodo={currentTodoLog}
+                onChangeTodoDate={handleChangeTodoDate}
                 period={period}
                 onChangePeriod={setPeriod}
                 onNavigate={navigateTo}
@@ -381,6 +439,8 @@ export const App: React.FC = () => {
                 currentLog={currentTodoLog}
                 allLogs={todoLogs}
                 onChangeDate={handleChangeTodoDate}
+                onMoveLogDate={handleMoveTodoDate}
+                onCopyLogToDate={handleCopyTodoToDate}
                 onUpdateCurrentLog={handleUpdateCurrentTodo}
                 onSaveLog={handleSaveTodoLog}
                 onSaveAsTemplate={handleSaveTodoTemplate}
@@ -447,6 +507,7 @@ export const App: React.FC = () => {
                 entries={entries}
                 todoLogs={todoLogs}
                 onEditEntry={handleEditEntry}
+                onChangeEntryDate={handleChangeEntryDate}
                 onDeleteEntry={handleDeleteEntry}
                 onCopyWhatsApp={handleCopyWhatsApp}
                 onExportCSV={() => exportEntriesToCSV(entries)}

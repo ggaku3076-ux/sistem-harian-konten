@@ -1,24 +1,30 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   BookmarkCheck,
   Calendar,
   Check,
   CheckCheck,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   Copy,
+  Edit3,
   ListChecks,
   Plus,
   Save,
   Trash2,
+  X,
 } from 'lucide-react';
 import { DailyTodoLog, TodoCategory, TodoItem } from '../types/content';
-import { formatDateID, getTodayDateString } from '../utils/storage';
+import { formatDateID, getTodayDateString, shiftDateString } from '../utils/storage';
 
 interface TodoSectionProps {
   currentLog: DailyTodoLog;
   allLogs: DailyTodoLog[];
   onChangeDate: (date: string) => void;
+  onMoveLogDate: (oldDate: string, newDate: string) => void;
+  onCopyLogToDate: (sourceLog: DailyTodoLog, targetDate: string) => void;
   onUpdateCurrentLog: (updater: (prev: DailyTodoLog) => DailyTodoLog) => void;
   onSaveLog: () => void;
   onSaveAsTemplate: () => void;
@@ -46,6 +52,8 @@ export const TodoSection: React.FC<TodoSectionProps> = ({
   currentLog,
   allLogs,
   onChangeDate,
+  onMoveLogDate,
+  onCopyLogToDate,
   onUpdateCurrentLog,
   onSaveLog,
   onSaveAsTemplate,
@@ -55,6 +63,26 @@ export const TodoSection: React.FC<TodoSectionProps> = ({
   const [newTitle, setNewTitle] = useState('');
   const [newCategory, setNewCategory] = useState<TodoCategory>('Konten');
   const [statusFilter, setStatusFilter] = useState<'all' | 'done' | 'pending'>('all');
+
+  // State for editing/moving the current report's date to ANY date
+  const [isEditingReportDate, setIsEditingReportDate] = useState(false);
+  const [draftReportDate, setDraftReportDate] = useState(currentLog.date);
+
+  // State for inline editing an archive item's date
+  const [editingArchiveDate, setEditingArchiveDate] = useState<string | null>(null);
+  const [archiveDraftDate, setArchiveDraftDate] = useState('');
+
+  // State for inline editing a todo task title
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editingItemTitle, setEditingItemTitle] = useState('');
+
+  useEffect(() => {
+    setDraftReportDate(currentLog.date);
+    setIsEditingReportDate(false);
+  }, [currentLog.date]);
+
+  const todayStr = getTodayDateString();
+  const yesterdayStr = shiftDateString(todayStr, -1);
 
   const completedItems = useMemo(
     () => currentLog.items.filter((i) => i.completed),
@@ -105,6 +133,22 @@ export const TodoSection: React.FC<TodoSectionProps> = ({
     }));
   };
 
+  const saveEditedItemTitle = (id: string) => {
+    const trimmed = editingItemTitle.trim();
+    if (!trimmed) {
+      setEditingItemId(null);
+      return;
+    }
+    onUpdateCurrentLog((prev) => ({
+      ...prev,
+      items: prev.items.map((item) =>
+        item.id === id ? { ...item, title: trimmed } : item
+      ),
+      updatedAt: new Date().toISOString(),
+    }));
+    setEditingItemId(null);
+  };
+
   const deleteItem = (id: string) => {
     onUpdateCurrentLog((prev) => ({
       ...prev,
@@ -144,7 +188,7 @@ export const TodoSection: React.FC<TodoSectionProps> = ({
       }}
     >
       <div className="container">
-        {/* Header + Tanggal Laporan */}
+        {/* Header + Bebas Pilih / Geser Tanggal Laporan Berapapun */}
         <div
           style={{
             display: 'flex',
@@ -166,44 +210,84 @@ export const TodoSection: React.FC<TodoSectionProps> = ({
               Todo List Harian &amp; Tanggal Laporan
             </h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.92rem', marginTop: '4px' }}>
-              Pantau hari ini sudah mengerjakan apa saja berdasarkan tanggal laporan pemasaran properti.
+              Pilih atau edit ke tanggal berapapun (mundur, hari ini, maupun maju) sesuai kebutuhan laporan.
             </p>
           </div>
 
           <div
             style={{
               display: 'flex',
+              flexWrap: 'wrap',
               alignItems: 'center',
-              gap: '8px',
+              gap: '6px',
               backgroundColor: '#ffffff',
               padding: '8px 12px',
-              borderRadius: '16px',
+              borderRadius: '18px',
               border: '1px solid var(--border-light)',
             }}
           >
             <Calendar size={16} color="#1d1d1f" />
-            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-              Tgl Laporan:
+            <span style={{ fontSize: '0.79rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+              Pilih Tgl:
             </span>
+
+            <button
+              type="button"
+              onClick={() => onChangeDate(shiftDateString(currentLog.date, -1))}
+              className="btn-ghost"
+              style={{ padding: '5px 7px', borderRadius: '8px', backgroundColor: 'var(--bg-secondary)' }}
+              title="Mundur 1 Hari"
+            >
+              <ChevronLeft size={15} />
+            </button>
+
             <input
               type="date"
               className="apple-input tabular-num"
-              style={{ width: 'auto', padding: '6px 10px', fontSize: '0.86rem' }}
+              style={{ width: 'auto', padding: '6px 10px', fontSize: '0.85rem' }}
               value={currentLog.date}
               onChange={(e) => {
                 if (e.target.value) onChangeDate(e.target.value);
               }}
             />
-            {currentLog.date !== getTodayDateString() && (
-              <button
-                type="button"
-                onClick={() => onChangeDate(getTodayDateString())}
-                className="btn-ghost"
-                style={{ padding: '6px 10px', fontSize: '0.78rem' }}
-              >
-                Hari Ini
-              </button>
-            )}
+
+            <button
+              type="button"
+              onClick={() => onChangeDate(shiftDateString(currentLog.date, 1))}
+              className="btn-ghost"
+              style={{ padding: '5px 7px', borderRadius: '8px', backgroundColor: 'var(--bg-secondary)' }}
+              title="Maju 1 Hari"
+            >
+              <ChevronRight size={15} />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onChangeDate(yesterdayStr)}
+              className="btn-ghost"
+              style={{
+                padding: '5px 10px',
+                fontSize: '0.76rem',
+                backgroundColor: currentLog.date === yesterdayStr ? '#1d1d1f' : 'transparent',
+                color: currentLog.date === yesterdayStr ? '#ffffff' : 'var(--text-secondary)',
+              }}
+            >
+              Kemarin
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onChangeDate(todayStr)}
+              className="btn-ghost"
+              style={{
+                padding: '5px 10px',
+                fontSize: '0.76rem',
+                backgroundColor: currentLog.date === todayStr ? '#1d1d1f' : 'transparent',
+                color: currentLog.date === todayStr ? '#ffffff' : 'var(--text-secondary)',
+              }}
+            >
+              Hari Ini
+            </button>
           </div>
         </div>
 
@@ -243,7 +327,7 @@ export const TodoSection: React.FC<TodoSectionProps> = ({
               >
                 <input
                   type="text"
-                  placeholder="Ketik aktivitas hari ini (misal: Take video blok B / Follow-up berkas KPR)..."
+                  placeholder="Ketik aktivitas (misal: Take video blok B / Follow-up berkas KPR)..."
                   className="apple-input"
                   value={newTitle}
                   onChange={(e) => setNewTitle(e.target.value)}
@@ -343,121 +427,173 @@ export const TodoSection: React.FC<TodoSectionProps> = ({
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   <AnimatePresence initial={false}>
-                    {filteredItems.map((item) => (
-                      <motion.div
-                        key={item.id}
-                        layout
-                        initial={{ opacity: 0, y: 6 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.98 }}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          gap: '12px',
-                          padding: '13px 16px',
-                          borderRadius: '16px',
-                          backgroundColor: item.completed ? '#fbfbfd' : 'var(--bg-secondary)',
-                          border: item.completed
-                            ? '1px solid var(--success-border)'
-                            : '1px solid var(--border-light)',
-                        }}
-                      >
-                        <div
-                          onClick={() => toggleItem(item.id)}
+                    {filteredItems.map((item) => {
+                      const isEditingThis = editingItemId === item.id;
+                      return (
+                        <motion.div
+                          key={item.id}
+                          layout
+                          initial={{ opacity: 0, y: 6 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, scale: 0.98 }}
                           style={{
                             display: 'flex',
                             alignItems: 'center',
+                            justifyContent: 'space-between',
                             gap: '12px',
-                            cursor: 'pointer',
-                            flex: 1,
+                            padding: '13px 16px',
+                            borderRadius: '16px',
+                            backgroundColor: item.completed ? '#fbfbfd' : 'var(--bg-secondary)',
+                            border: item.completed
+                              ? '1px solid var(--success-border)'
+                              : '1px solid var(--border-light)',
                           }}
                         >
-                          <div
-                            style={{
-                              width: '24px',
-                              height: '24px',
-                              borderRadius: '9999px',
-                              backgroundColor: item.completed ? '#166534' : '#ffffff',
-                              border: item.completed
-                                ? '1.5px solid #166534'
-                                : '1.5px solid var(--border-strong)',
-                              color: '#ffffff',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              flexShrink: 0,
-                              transition: 'all 0.16s ease',
-                            }}
-                          >
-                            {item.completed && <Check size={14} />}
-                          </div>
-
-                          <div style={{ flex: 1 }}>
-                            <div
-                              style={{
-                                fontSize: '0.92rem',
-                                fontWeight: 600,
-                                color: item.completed
-                                  ? 'var(--text-muted)'
-                                  : 'var(--text-primary)',
-                                textDecoration: item.completed ? 'line-through' : 'none',
-                              }}
-                            >
-                              {item.title}
+                          {isEditingThis ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
+                              <input
+                                type="text"
+                                className="apple-input"
+                                style={{ backgroundColor: '#ffffff', padding: '7px 12px', fontSize: '0.88rem' }}
+                                value={editingItemTitle}
+                                autoFocus
+                                onChange={(e) => setEditingItemTitle(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') saveEditedItemTitle(item.id);
+                                  if (e.key === 'Escape') setEditingItemId(null);
+                                }}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => saveEditedItemTitle(item.id)}
+                                className="btn-primary"
+                                style={{ padding: '7px 12px', fontSize: '0.78rem' }}
+                              >
+                                Simpan
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setEditingItemId(null)}
+                                className="btn-ghost"
+                                style={{ padding: '6px' }}
+                              >
+                                <X size={15} />
+                              </button>
                             </div>
-                            <div
-                              style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '8px',
-                                marginTop: '3px',
-                              }}
-                            >
-                              <span
+                          ) : (
+                            <>
+                              <div
+                                onClick={() => toggleItem(item.id)}
                                 style={{
-                                  fontSize: '0.7rem',
-                                  fontWeight: 600,
-                                  color: 'var(--text-secondary)',
-                                  backgroundColor: '#ffffff',
-                                  padding: '1px 8px',
-                                  borderRadius: '9999px',
-                                  border: '1px solid var(--border-light)',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '12px',
+                                  cursor: 'pointer',
+                                  flex: 1,
                                 }}
                               >
-                                {item.category}
-                              </span>
-                              {item.completed && item.completedAt && (
-                                <span
-                                  className="tabular-num"
+                                <div
                                   style={{
-                                    fontSize: '0.72rem',
-                                    color: 'var(--success-text)',
-                                    display: 'inline-flex',
+                                    width: '24px',
+                                    height: '24px',
+                                    borderRadius: '9999px',
+                                    backgroundColor: item.completed ? '#166534' : '#ffffff',
+                                    border: item.completed
+                                      ? '1.5px solid #166534'
+                                      : '1.5px solid var(--border-strong)',
+                                    color: '#ffffff',
+                                    display: 'flex',
                                     alignItems: 'center',
-                                    gap: '3px',
-                                    fontWeight: 600,
+                                    justifyContent: 'center',
+                                    flexShrink: 0,
+                                    transition: 'all 0.16s ease',
                                   }}
                                 >
-                                  <Clock size={11} />
-                                  Selesai {item.completedAt}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
+                                  {item.completed && <Check size={14} />}
+                                </div>
 
-                        <button
-                          type="button"
-                          onClick={() => deleteItem(item.id)}
-                          className="btn-ghost"
-                          style={{ padding: '6px', color: 'var(--text-muted)' }}
-                          title="Hapus item"
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      </motion.div>
-                    ))}
+                                <div style={{ flex: 1 }}>
+                                  <div
+                                    style={{
+                                      fontSize: '0.92rem',
+                                      fontWeight: 600,
+                                      color: item.completed
+                                        ? 'var(--text-muted)'
+                                        : 'var(--text-primary)',
+                                      textDecoration: item.completed ? 'line-through' : 'none',
+                                    }}
+                                  >
+                                    {item.title}
+                                  </div>
+                                  <div
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '8px',
+                                      marginTop: '3px',
+                                    }}
+                                  >
+                                    <span
+                                      style={{
+                                        fontSize: '0.7rem',
+                                        fontWeight: 600,
+                                        color: 'var(--text-secondary)',
+                                        backgroundColor: '#ffffff',
+                                        padding: '1px 8px',
+                                        borderRadius: '9999px',
+                                        border: '1px solid var(--border-light)',
+                                      }}
+                                    >
+                                      {item.category}
+                                    </span>
+                                    {item.completed && item.completedAt && (
+                                      <span
+                                        className="tabular-num"
+                                        style={{
+                                          fontSize: '0.72rem',
+                                          color: 'var(--success-text)',
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '3px',
+                                          fontWeight: 600,
+                                        }}
+                                      >
+                                        <Clock size={11} />
+                                        Selesai {item.completedAt}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingItemId(item.id);
+                                    setEditingItemTitle(item.title);
+                                  }}
+                                  className="btn-ghost"
+                                  style={{ padding: '6px', color: 'var(--text-muted)' }}
+                                  title="Edit nama tugas"
+                                >
+                                  <Edit3 size={14} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => deleteItem(item.id)}
+                                  className="btn-ghost"
+                                  style={{ padding: '6px', color: 'var(--text-muted)' }}
+                                  title="Hapus item"
+                                >
+                                  <Trash2 size={15} />
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </motion.div>
+                      );
+                    })}
                   </AnimatePresence>
                 </div>
               )}
@@ -471,7 +607,7 @@ export const TodoSection: React.FC<TodoSectionProps> = ({
                 }}
               >
                 <label className="apple-label" htmlFor="todo-notes">
-                  Catatan Tambahan Hari Ini (Opsional)
+                  Catatan Tambahan Tanggal Ini (Opsional)
                 </label>
                 <textarea
                   id="todo-notes"
@@ -517,23 +653,43 @@ export const TodoSection: React.FC<TodoSectionProps> = ({
             </div>
           </div>
 
-          {/* RIGHT COLUMN: SUMMARY "SUDAH APA SAJA", SAVE, & HISTORY BY REPORT DATE */}
+          {/* RIGHT COLUMN: SUMMARY + EDIT TANGGAL BERAPAPUN + ARCHIVE */}
           <div style={{ position: 'sticky', top: '100px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div className="bento-card" style={{ border: '1px solid var(--border-strong)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px', marginBottom: '16px' }}>
-                <div>
-                  <div
-                    style={{
-                      fontSize: '0.72rem',
-                      fontWeight: 700,
-                      color: 'var(--text-muted)',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.06em',
-                    }}
-                  >
-                    Tanggal Laporan
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px', marginBottom: '14px' }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span
+                      style={{
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        color: 'var(--text-muted)',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.06em',
+                      }}
+                    >
+                      Tanggal Laporan
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDraftReportDate(currentLog.date);
+                        setIsEditingReportDate((v) => !v);
+                      }}
+                      className="btn-ghost"
+                      style={{
+                        padding: '2px 8px',
+                        fontSize: '0.72rem',
+                        color: 'var(--accent)',
+                        backgroundColor: 'var(--accent-soft)',
+                      }}
+                    >
+                      <Edit3 size={11} />
+                      <span>{isEditingReportDate ? 'Tutup' : 'Edit Tanggal'}</span>
+                    </button>
                   </div>
-                  <div style={{ fontSize: '1.12rem', fontWeight: 700, marginTop: '2px' }}>
+
+                  <div style={{ fontSize: '1.12rem', fontWeight: 700, marginTop: '3px' }}>
                     {formatDateID(currentLog.date)}
                   </div>
                   <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
@@ -584,6 +740,78 @@ export const TodoSection: React.FC<TodoSectionProps> = ({
                   </div>
                 </div>
               </div>
+
+              {/* Panel Edit / Pindah Tanggal Laporan ke Tanggal Berapapun */}
+              <AnimatePresence>
+                {isEditingReportDate && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    style={{ overflow: 'hidden' }}
+                  >
+                    <div
+                      style={{
+                        backgroundColor: 'var(--bg-secondary)',
+                        borderRadius: '14px',
+                        padding: '12px',
+                        marginBottom: '14px',
+                        border: '1px solid var(--border-strong)',
+                      }}
+                    >
+                      <div style={{ fontSize: '0.77rem', fontWeight: 700, marginBottom: '6px' }}>
+                        Ubah / Salin Checklist Ini ke Tanggal Berapapun:
+                      </div>
+                      <input
+                        type="date"
+                        className="apple-input tabular-num"
+                        style={{ backgroundColor: '#ffffff', padding: '8px 10px', marginBottom: '8px' }}
+                        value={draftReportDate}
+                        onChange={(e) => setDraftReportDate(e.target.value)}
+                      />
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                        <button
+                          type="button"
+                          disabled={!draftReportDate || draftReportDate === currentLog.date}
+                          onClick={() => {
+                            if (draftReportDate && draftReportDate !== currentLog.date) {
+                              onMoveLogDate(currentLog.date, draftReportDate);
+                              setIsEditingReportDate(false);
+                            }
+                          }}
+                          className="btn-primary"
+                          style={{
+                            padding: '8px 10px',
+                            fontSize: '0.76rem',
+                            opacity: !draftReportDate || draftReportDate === currentLog.date ? 0.45 : 1,
+                          }}
+                        >
+                          Ubah Tanggal
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!draftReportDate || draftReportDate === currentLog.date}
+                          onClick={() => {
+                            if (draftReportDate && draftReportDate !== currentLog.date) {
+                              onCopyLogToDate(currentLog, draftReportDate);
+                              setIsEditingReportDate(false);
+                            }
+                          }}
+                          className="btn-secondary"
+                          style={{
+                            padding: '8px 10px',
+                            fontSize: '0.76rem',
+                            backgroundColor: '#ffffff',
+                            opacity: !draftReportDate || draftReportDate === currentLog.date ? 0.45 : 1,
+                          }}
+                        >
+                          Salin ke Tanggal
+                        </button>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               {/* Recap List: Hari Ini Sudah Apa Saja */}
               <div
@@ -648,7 +876,7 @@ export const TodoSection: React.FC<TodoSectionProps> = ({
               </div>
             </div>
 
-            {/* Saved Todo History by Report Date */}
+            {/* Saved Todo History by Report Date (with Inline Edit Tanggal) */}
             <div className="bento-card">
               <h3 style={{ fontSize: '0.94rem', fontWeight: 700, marginBottom: '12px' }}>
                 Arsip Todo per Tanggal Laporan ({allLogs.length})
@@ -658,18 +886,20 @@ export const TodoSection: React.FC<TodoSectionProps> = ({
                   Klik Simpan Todo untuk menyimpan arsip harian per tanggal laporan.
                 </div>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '240px', overflowY: 'auto' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '260px', overflowY: 'auto' }}>
                   {allLogs.map((log) => {
                     const dCount = log.items.filter((i) => i.completed).length;
                     const tCount = log.items.length;
                     const isCurrent = log.date === currentLog.date;
+                    const isEditingThisArch = editingArchiveDate === log.date;
+
                     return (
                       <div
                         key={log.date}
                         style={{
                           display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
+                          flexDirection: 'column',
+                          gap: '8px',
                           padding: '9px 12px',
                           borderRadius: '12px',
                           backgroundColor: isCurrent ? 'var(--accent-soft)' : 'var(--bg-secondary)',
@@ -678,32 +908,83 @@ export const TodoSection: React.FC<TodoSectionProps> = ({
                             : '1px solid var(--border-light)',
                         }}
                       >
-                        <button
-                          type="button"
-                          onClick={() => onChangeDate(log.date)}
-                          style={{
-                            textAlign: 'left',
-                            flex: 1,
-                            color: 'var(--text-primary)',
-                          }}
-                        >
-                          <div style={{ fontSize: '0.82rem', fontWeight: 700 }}>
-                            {formatDateID(log.date)}
+                        {isEditingThisArch ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <input
+                              type="date"
+                              className="apple-input tabular-num"
+                              style={{ backgroundColor: '#ffffff', padding: '5px 8px', fontSize: '0.8rem' }}
+                              value={archiveDraftDate}
+                              onChange={(e) => setArchiveDraftDate(e.target.value)}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (archiveDraftDate && archiveDraftDate !== log.date) {
+                                  onMoveLogDate(log.date, archiveDraftDate);
+                                }
+                                setEditingArchiveDate(null);
+                              }}
+                              className="btn-primary"
+                              style={{ padding: '6px 10px', fontSize: '0.74rem' }}
+                              title="Simpan tanggal baru"
+                            >
+                              Simpan
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingArchiveDate(null)}
+                              className="btn-ghost"
+                              style={{ padding: '4px' }}
+                              title="Batal"
+                            >
+                              <X size={14} />
+                            </button>
                           </div>
-                          <div className="tabular-num" style={{ fontSize: '0.73rem', color: 'var(--text-secondary)' }}>
-                            Selesai {dCount}/{tCount} tugas
-                          </div>
-                        </button>
+                        ) : (
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                            <button
+                              type="button"
+                              onClick={() => onChangeDate(log.date)}
+                              style={{
+                                textAlign: 'left',
+                                flex: 1,
+                                color: 'var(--text-primary)',
+                              }}
+                            >
+                              <div style={{ fontSize: '0.82rem', fontWeight: 700 }}>
+                                {formatDateID(log.date)}
+                              </div>
+                              <div className="tabular-num" style={{ fontSize: '0.73rem', color: 'var(--text-secondary)' }}>
+                                Selesai {dCount}/{tCount} tugas
+                              </div>
+                            </button>
 
-                        <button
-                          type="button"
-                          onClick={() => onDeleteLogDate(log.date)}
-                          className="btn-ghost"
-                          style={{ padding: '5px', color: 'var(--text-muted)' }}
-                          title="Hapus arsip tanggal ini"
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingArchiveDate(log.date);
+                                  setArchiveDraftDate(log.date);
+                                }}
+                                className="btn-ghost"
+                                style={{ padding: '5px', color: 'var(--text-muted)' }}
+                                title="Edit tanggal laporan arsip ini"
+                              >
+                                <Edit3 size={14} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => onDeleteLogDate(log.date)}
+                                className="btn-ghost"
+                                style={{ padding: '5px', color: 'var(--text-muted)' }}
+                                title="Hapus arsip tanggal ini"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     );
                   })}

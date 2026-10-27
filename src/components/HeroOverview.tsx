@@ -5,6 +5,8 @@ import {
   ArrowRight,
   Check,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   Film,
   Heart,
@@ -28,11 +30,13 @@ import {
   getTodayDateString,
   getTotalInteractions,
   getTotalPostsPublished,
+  shiftDateString,
 } from '../utils/storage';
 
 interface HeroOverviewProps {
   entries: DailyContentEntry[];
   todayTodo: DailyTodoLog;
+  onChangeTodoDate: (date: string) => void;
   period: PeriodFilter;
   onChangePeriod: (p: PeriodFilter) => void;
   onNavigate: (page: AppPage, perfTab?: PerformanceTab) => void;
@@ -41,6 +45,7 @@ interface HeroOverviewProps {
 export const HeroOverview: React.FC<HeroOverviewProps> = ({
   entries,
   todayTodo,
+  onChangeTodoDate,
   period,
   onChangePeriod,
   onNavigate,
@@ -358,11 +363,51 @@ export const HeroOverview: React.FC<HeroOverviewProps> = ({
                 <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
                   <span className="pill-badge pill-dark" style={{ fontSize: '0.7rem' }}>
                     <ListChecks size={12} />
-                    TODO HARI INI
+                    TODO HARIAN
                   </span>
                   <span style={{ fontSize: '0.84rem', fontWeight: 700 }}>
-                    Tgl Laporan: {formatDateID(todayTodo.date)}
+                    {formatDateID(todayTodo.date)}
                   </span>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                    <button
+                      type="button"
+                      onClick={() => onChangeTodoDate(shiftDateString(todayTodo.date, -1))}
+                      className="btn-ghost"
+                      style={{ padding: '3px 6px', borderRadius: '7px', backgroundColor: 'var(--bg-secondary)' }}
+                      title="Mundur 1 Hari"
+                    >
+                      <ChevronLeft size={13} />
+                    </button>
+                    <input
+                      type="date"
+                      aria-label="Pilih Tanggal Todo"
+                      className="apple-input tabular-num"
+                      style={{ width: 'auto', padding: '3px 8px', fontSize: '0.77rem' }}
+                      value={todayTodo.date}
+                      onChange={(e) => {
+                        if (e.target.value) onChangeTodoDate(e.target.value);
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => onChangeTodoDate(shiftDateString(todayTodo.date, 1))}
+                      className="btn-ghost"
+                      style={{ padding: '3px 6px', borderRadius: '7px', backgroundColor: 'var(--bg-secondary)' }}
+                      title="Maju 1 Hari"
+                    >
+                      <ChevronRight size={13} />
+                    </button>
+                    {todayTodo.date !== todayStr && (
+                      <button
+                        type="button"
+                        onClick={() => onChangeTodoDate(todayStr)}
+                        className="btn-ghost"
+                        style={{ padding: '3px 8px', fontSize: '0.73rem' }}
+                      >
+                        Hari Ini
+                      </button>
+                    )}
+                  </div>
                   <span className="pill-badge pill-neutral tabular-num">
                     {doneList.length}/{totalList} Selesai
                   </span>
