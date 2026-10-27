@@ -1,14 +1,19 @@
 import {
   DailyContentEntry,
   DailyTargets,
+  DailyTodoLog,
   PlatformEngagement,
   PropertyCategory,
+  TodoCategory,
+  TodoItem,
 } from '../types/content';
 
 const STORAGE_KEY = 'proppulse_daily_entries_v1';
 const DRAFT_KEY = 'proppulse_daily_draft_v1';
 const TARGETS_KEY = 'proppulse_daily_targets_v1';
 const PROJECTS_KEY = 'proppulse_saved_projects_v1';
+const TODO_LOGS_KEY = 'proppulse_daily_todos_v1';
+const TODO_TEMPLATE_KEY = 'proppulse_todo_template_v1';
 
 export const CONTENT_TYPE_PRESETS = [
   'Video Tour Rumah',
@@ -321,6 +326,17 @@ export function formatWhatsAppReport(entry: DailyContentEntry): string {
   const fmtMetricLine = (name: string, m: PlatformEngagement) =>
     `• ${name}: ${formatNumberID(m.views)} views | ${formatNumberID(m.likes)}L | ${formatNumberID(m.comments)}C | ${formatNumberID(m.shares)}S | ${formatNumberID(m.saves)} save | ${formatNumberID(m.waLinkClicks)} WA`;
 
+  const todoForDate = loadTodoLogs().find((t) => t.date === synced.date);
+  const doneTodos = todoForDate ? todoForDate.items.filter((i) => i.completed) : [];
+  const todoBlock =
+    doneTodos.length > 0
+      ? [
+          ``,
+          `*4. Todo Selesai (${doneTodos.length}/${todoForDate!.items.length})*`,
+          ...doneTodos.map((t) => `✓ ${t.title}`),
+        ].join('\n')
+      : '';
+
   return [
     `*LAPORAN KONTEN HARIAN PEMASARAN PROPERTI*`,
     `Tanggal: ${formatDateID(synced.date)}`,
@@ -342,6 +358,7 @@ export function formatWhatsAppReport(entry: DailyContentEntry): string {
     `*3. Pipeline Prospek Properti*`,
     `• Status: ${prospectText}`,
     synced.notes ? `• Catatan: ${synced.notes}` : '',
+    todoBlock,
   ]
     .filter((line) => line !== '')
     .join('\n');
@@ -482,6 +499,7 @@ export function exportBackupJSON(entries: DailyContentEntry[]): void {
     exportedAt: new Date().toISOString(),
     count: entries.length,
     entries: entries.map((e) => syncTotalEngagement(e)),
+    todos: loadTodoLogs(),
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -492,4 +510,93 @@ export function exportBackupJSON(entries: DailyContentEntry[]): void {
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+}
+
+// ================= DAILY TODO LIST HELPERS =================
+
+export const DEFAULT_TODO_TEMPLATE: { title: string; category: TodoCategory }[] = [
+  { title: 'Take & edit video konten properti hari ini', category: 'Konten' },
+  { title: 'Posting video ke TikTok (TT)', category: 'Sosmed' },
+  { title: 'Posting Reels / Feed ke Instagram (IG)', category: 'Sosmed' },
+  { title: 'Posting video ke Facebook (FB)', category: 'Sosmed' },
+  { title: 'Share video ke grup jual-beli properti / komunitas', category: 'Grup & Iklan' },
+  { title: 'Pasang / perbarui iklan FB Marketplace', category: 'Grup & Iklan' },
+  { title: 'Sesi Live Streaming review unit / Q&A KPR', category: 'Live' },
+  { title: 'Balas & follow-up chat WA prospek (Subsidi / Komersil)', category: 'Prospek & Survey' },
+];
+
+export function loadTodoTemplate(): { title: string; category: TodoCategory }[] {
+  try {
+    const raw = localStorage.getItem(TODO_TEMPLATE_KEY);
+    if (!raw) return DEFAULT_TODO_TEMPLATE;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_TODO_TEMPLATE;
+  } catch {
+    return DEFAULT_TODO_TEMPLATE;
+  }
+}
+
+export function saveTodoTemplate(items: TodoItem[]): void {
+  const template = items.map((i) => ({ title: i.title, category: i.category }));
+  localStorage.setItem(TODO_TEMPLATE_KEY, JSON.stringify(template));
+}
+
+export function createDefaultTodoLog(date: string = getTodayDateString()): DailyTodoLog {
+  const template = loadTodoTemplate();
+  return {
+    date,
+    items: template.map((t, idx) => ({
+      id: `todo-${date}-${idx}-${Math.random().toString(36).slice(2, 6)}`,
+      title: t.title,
+      category: t.category,
+      completed: false,
+    })),
+    notes: '',
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+export function loadTodoLogs(): DailyTodoLog[] {
+  try {
+    const raw = localStorage.getItem(TODO_LOGS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.sort((a: DailyTodoLog, b: DailyTodoLog) => b.date.localeCompare(a.date));
+  } catch {
+    return [];
+  }
+}
+
+export function saveTodoLogs(logs: DailyTodoLog[]): void {
+  const sorted = [...logs].sort((a, b) => b.date.localeCompare(a.date));
+  localStorage.setItem(TODO_LOGS_KEY, JSON.stringify(sorted));
+}
+
+export function formatTodoWhatsAppReport(log: DailyTodoLog): string {
+  const done = log.items.filter((i) => i.completed);
+  const pending = log.items.filter((i) => !i.completed);
+  const pct =
+    log.items.length > 0 ? Math.round((done.length / log.items.length) * 100) : 0;
+
+  return [
+    `*LAPORAN TODO HARIAN PEMASARAN PROPERTI*`,
+    `Tanggal Laporan: ${formatDateID(log.date)}`,
+    `Progres: ${done.length}/${log.items.length} Selesai (${pct}%)`,
+    ``,
+    `*Sudah Dikerjakan Hari Ini:*`,
+    ...(done.length > 0
+      ? done.map((i) => `✅ ${i.title}${i.completedAt ? ` (${i.completedAt})` : ''}`)
+      : ['• Belum ada tugas ditandai selesai']),
+    ...(pending.length > 0
+      ? [
+          ``,
+          `*Belum / Lanjut:*`,
+          ...pending.map((i) => `⬜ ${i.title}`),
+        ]
+      : []),
+    log.notes ? `\n*Catatan:* ${log.notes}` : '',
+  ]
+    .filter((line) => line !== '')
+    .join('\n');
 }

@@ -3,17 +3,25 @@ import { motion } from 'framer-motion';
 import {
   Archive,
   ArrowRight,
+  Check,
   CheckCircle2,
   Clock,
   Film,
   Heart,
+  ListChecks,
   PenSquare,
   PieChart,
   Radio,
   Share2,
   UserCheck,
 } from 'lucide-react';
-import { AppPage, DailyContentEntry, PerformanceTab, PeriodFilter } from '../types/content';
+import {
+  AppPage,
+  DailyContentEntry,
+  DailyTodoLog,
+  PerformanceTab,
+  PeriodFilter,
+} from '../types/content';
 import {
   formatDateID,
   formatNumberID,
@@ -24,6 +32,7 @@ import {
 
 interface HeroOverviewProps {
   entries: DailyContentEntry[];
+  todayTodo: DailyTodoLog;
   period: PeriodFilter;
   onChangePeriod: (p: PeriodFilter) => void;
   onNavigate: (page: AppPage, perfTab?: PerformanceTab) => void;
@@ -31,6 +40,7 @@ interface HeroOverviewProps {
 
 export const HeroOverview: React.FC<HeroOverviewProps> = ({
   entries,
+  todayTodo,
   period,
   onChangePeriod,
   onNavigate,
@@ -327,6 +337,69 @@ export const HeroOverview: React.FC<HeroOverviewProps> = ({
             </div>
           </div>
         </div>
+
+        {/* Today's Todo Recap Strip with Report Date */}
+        {(() => {
+          const doneList = todayTodo.items.filter((i) => i.completed);
+          const totalList = todayTodo.items.length;
+          return (
+            <div
+              className="bento-card"
+              style={{
+                marginBottom: '22px',
+                display: 'flex',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '16px',
+              }}
+            >
+              <div style={{ flex: '1 1 320px' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                  <span className="pill-badge pill-dark" style={{ fontSize: '0.7rem' }}>
+                    <ListChecks size={12} />
+                    TODO HARI INI
+                  </span>
+                  <span style={{ fontSize: '0.84rem', fontWeight: 700 }}>
+                    Tgl Laporan: {formatDateID(todayTodo.date)}
+                  </span>
+                  <span className="pill-badge pill-neutral tabular-num">
+                    {doneList.length}/{totalList} Selesai
+                  </span>
+                </div>
+
+                {doneList.length === 0 ? (
+                  <p style={{ fontSize: '0.83rem', color: 'var(--text-muted)' }}>
+                    Belum ada aktivitas yang ditandai selesai hari ini. Klik buka checklist untuk mulai mencentang.
+                  </p>
+                ) : (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '6px' }}>
+                    {doneList.map((d) => (
+                      <span
+                        key={d.id}
+                        className="pill-badge pill-green"
+                        style={{ fontSize: '0.75rem', fontWeight: 600 }}
+                      >
+                        <Check size={12} />
+                        {d.title}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => onNavigate('todo')}
+                className="btn-secondary"
+                style={{ padding: '9px 16px', fontSize: '0.83rem' }}
+              >
+                <span>Buka Todo Harian</span>
+                <ArrowRight size={14} />
+              </button>
+            </div>
+          );
+        })()}
 
         {/* 3 Clean Workspace Shortcut Cards */}
         <div className="insights-grid">

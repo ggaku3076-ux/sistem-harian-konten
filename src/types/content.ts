@@ -4,11 +4,34 @@ export type LivePlatform = 'TikTok' | 'Instagram' | 'Facebook';
 
 export type SocialPlatformKey = 'tiktok' | 'instagram' | 'facebook';
 
-export type AppPage = 'beranda' | 'input' | 'performa' | 'riwayat';
+export type AppPage = 'beranda' | 'todo' | 'input' | 'performa' | 'riwayat';
 
 export type InputStep = 'distribusi' | 'engagement' | 'prospek';
 
 export type PerformanceTab = 'satuan' | 'mingguan' | 'gabungan';
+
+export type TodoCategory =
+  | 'Konten'
+  | 'Sosmed'
+  | 'Grup & Iklan'
+  | 'Live'
+  | 'Prospek & Survey'
+  | 'Lainnya';
+
+export interface TodoItem {
+  id: string;
+  title: string;
+  category: TodoCategory;
+  completed: boolean;
+  completedAt?: string;
+}
+
+export interface DailyTodoLog {
+  date: string; // YYYY-MM-DD (Tanggal Laporan)
+  items: TodoItem[];
+  notes: string;
+  updatedAt: string;
+}
 
 export interface SocialPlatformEntry {
   active: boolean;

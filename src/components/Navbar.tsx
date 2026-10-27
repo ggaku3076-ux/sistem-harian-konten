@@ -7,6 +7,7 @@ import {
   Download,
   Home,
   Layers,
+  ListChecks,
   type LucideIcon,
   PenSquare,
   PieChart,
@@ -25,6 +26,7 @@ interface NavbarProps {
   perfTab: PerformanceTab;
   onChangePerfTab: (tab: PerformanceTab) => void;
   totalSaved: number;
+  todayTodoBadge: string;
   onQuickInputToday: () => void;
   onExportCSV: () => void;
 }
@@ -37,6 +39,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   perfTab,
   onChangePerfTab,
   totalSaved,
+  todayTodoBadge,
   onQuickInputToday,
   onExportCSV,
 }) => {
@@ -44,9 +47,10 @@ export const Navbar: React.FC<NavbarProps> = ({
     id: AppPage;
     label: string;
     icon: LucideIcon;
-    badge?: number;
+    badge?: number | string;
   }[] = [
     { id: 'beranda', label: 'Beranda', icon: Home },
+    { id: 'todo', label: 'Todo Harian', icon: ListChecks, badge: todayTodoBadge },
     { id: 'input', label: 'Input Harian', icon: PenSquare },
     { id: 'performa', label: 'Performa', icon: PieChart },
     { id: 'riwayat', label: 'Riwayat', icon: Archive, badge: totalSaved },
@@ -153,7 +157,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               >
                 <Icon size={14} />
                 <span>{item.label}</span>
-                {typeof item.badge === 'number' && (
+                {item.badge !== undefined && (
                   <span
                     className="tabular-num"
                     style={{

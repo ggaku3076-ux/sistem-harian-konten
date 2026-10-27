@@ -6,6 +6,7 @@ import {
   AppPage,
   DailyContentEntry,
   DailyTargets,
+  DailyTodoLog,
   InputStep,
   PerformanceTab,
   PeriodFilter,
@@ -13,23 +14,29 @@ import {
 import {
   addSavedProject,
   clearDraft,
+  createDefaultTodoLog,
   createEmptyEntry,
   exportBackupJSON,
   exportEntriesToCSV,
   formatDateID,
+  formatTodoWhatsAppReport,
   formatWhatsAppReport,
   getTodayDateString,
   loadDraft,
   loadEntries,
   loadSavedProjects,
   loadTargets,
+  loadTodoLogs,
   normalizeEntry,
   saveDraft,
   saveEntries,
   saveTargets,
+  saveTodoLogs,
+  saveTodoTemplate,
 } from './utils/storage';
 import { Navbar } from './components/Navbar';
 import { HeroOverview } from './components/HeroOverview';
+import { TodoSection } from './components/TodoSection';
 import { DailyInputForm } from './components/DailyInputForm';
 import { PerformanceInsights } from './components/PerformanceInsights';
 import { HistorySection } from './components/HistorySection';
@@ -37,7 +44,13 @@ import { Footer } from './components/Footer';
 
 function parseHashToPage(): AppPage {
   const h = window.location.hash.replace('#', '').toLowerCase();
-  if (h === 'input' || h === 'performa' || h === 'riwayat' || h === 'beranda') {
+  if (
+    h === 'todo' ||
+    h === 'input' ||
+    h === 'performa' ||
+    h === 'riwayat' ||
+    h === 'beranda'
+  ) {
     return h;
   }
   return 'beranda';
@@ -53,6 +66,14 @@ export const App: React.FC = () => {
   const [savedProjects, setSavedProjects] = useState<string[]>(() => loadSavedProjects());
   const [period, setPeriod] = useState<PeriodFilter>('30d');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Daily Todo State
+  const [todoLogs, setTodoLogs] = useState<DailyTodoLog[]>(() => loadTodoLogs());
+  const [currentTodoLog, setCurrentTodoLog] = useState<DailyTodoLog>(() => {
+    const today = getTodayDateString();
+    const found = loadTodoLogs().find((l) => l.date === today);
+    return found || createDefaultTodoLog(today);
+  });
 
   const lenisRef = useRef<Lenis | null>(null);
 
@@ -121,6 +142,73 @@ export const App: React.FC = () => {
     const timer = setTimeout(() => setToastMessage(null), 3200);
     return () => clearTimeout(timer);
   }, [toastMessage]);
+
+  // Todo Handlers
+  const persistTodoLog = (log: DailyTodoLog) => {
+    const others = todoLogs.filter((l) => l.date !== log.date);
+    const next = [log, ...others];
+    saveTodoLogs(next);
+    setTodoLogs(loadTodoLogs());
+  };
+
+  const handleChangeTodoDate = (date: string) => {
+    const existing = todoLogs.find((l) => l.date === date);
+    setCurrentTodoLog(existing || createDefaultTodoLog(date));
+  };
+
+  const handleUpdateCurrentTodo = (updater: (prev: DailyTodoLog) => DailyTodoLog) => {
+    setCurrentTodoLog((prev) => {
+      const updated = updater(prev);
+      persistTodoLog(updated);
+      return updated;
+    });
+  };
+
+  const handleSaveTodoLog = () => {
+    persistTodoLog({ ...currentTodoLog, updatedAt: new Date().toISOString() });
+    showToast(`Todo tanggal ${formatDateID(currentTodoLog.date)} berhasil disimpan`);
+  };
+
+  const handleSaveTodoTemplate = () => {
+    saveTodoTemplate(currentTodoLog.items);
+    showToast('Daftar tugas disimpan sebagai template harian');
+  };
+
+  const handleDeleteTodoDate = (date: string) => {
+    const next = todoLogs.filter((l) => l.date !== date);
+    saveTodoLogs(next);
+    setTodoLogs(loadTodoLogs());
+    if (currentTodoLog.date === date) {
+      setCurrentTodoLog(createDefaultTodoLog(date));
+    }
+    showToast(`Arsip todo ${formatDateID(date)} dihapus`);
+  };
+
+  const copyTextToClipboard = async (text: string, successMsg: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast(successMsg);
+    } catch {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+      showToast(successMsg);
+    }
+  };
+
+  const todayTodoForOverview = useMemo(() => {
+    const today = getTodayDateString();
+    if (currentTodoLog.date === today) return currentTodoLog;
+    return todoLogs.find((l) => l.date === today) || createDefaultTodoLog(today);
+  }, [currentTodoLog, todoLogs]);
+
+  const todayTodoBadge = useMemo(() => {
+    const done = todayTodoForOverview.items.filter((i) => i.completed).length;
+    return `${done}/${todayTodoForOverview.items.length}`;
+  }, [todayTodoForOverview]);
 
   const isEditingExisting = useMemo(
     () => entries.some((e) => e.id === form.id),
@@ -205,20 +293,18 @@ export const App: React.FC = () => {
     showToast('Laporan harian berhasil dihapus');
   };
 
-  const handleCopyWhatsApp = async (entry: DailyContentEntry) => {
-    const text = formatWhatsAppReport(entry);
-    try {
-      await navigator.clipboard.writeText(text);
-      showToast('Format laporan WhatsApp berhasil disalin');
-    } catch {
-      const textarea = document.createElement('textarea');
-      textarea.value = text;
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand('copy');
-      document.body.removeChild(textarea);
-      showToast('Format laporan WhatsApp berhasil disalin');
-    }
+  const handleCopyWhatsApp = (entry: DailyContentEntry) => {
+    copyTextToClipboard(
+      formatWhatsAppReport(entry),
+      'Format laporan WhatsApp berhasil disalin'
+    );
+  };
+
+  const handleCopyTodoWA = (log: DailyTodoLog) => {
+    copyTextToClipboard(
+      formatTodoWhatsAppReport(log),
+      'Laporan Todo WhatsApp berhasil disalin'
+    );
   };
 
   const handleUpdateTargets = (nextTargets: DailyTargets) => {
@@ -258,6 +344,7 @@ export const App: React.FC = () => {
           window.scrollTo({ top: 0, behavior: 'smooth' });
         }}
         totalSaved={entries.length}
+        todayTodoBadge={todayTodoBadge}
         onQuickInputToday={handleQuickInputToday}
         onExportCSV={() => exportEntriesToCSV(entries)}
       />
@@ -274,9 +361,31 @@ export const App: React.FC = () => {
             >
               <HeroOverview
                 entries={entries}
+                todayTodo={todayTodoForOverview}
                 period={period}
                 onChangePeriod={setPeriod}
                 onNavigate={navigateTo}
+              />
+            </motion.div>
+          )}
+
+          {activePage === 'todo' && (
+            <motion.div
+              key="page-todo"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.22 }}
+            >
+              <TodoSection
+                currentLog={currentTodoLog}
+                allLogs={todoLogs}
+                onChangeDate={handleChangeTodoDate}
+                onUpdateCurrentLog={handleUpdateCurrentTodo}
+                onSaveLog={handleSaveTodoLog}
+                onSaveAsTemplate={handleSaveTodoTemplate}
+                onCopyTodoWA={handleCopyTodoWA}
+                onDeleteLogDate={handleDeleteTodoDate}
               />
             </motion.div>
           )}
@@ -336,6 +445,7 @@ export const App: React.FC = () => {
             >
               <HistorySection
                 entries={entries}
+                todoLogs={todoLogs}
                 onEditEntry={handleEditEntry}
                 onDeleteEntry={handleDeleteEntry}
                 onCopyWhatsApp={handleCopyWhatsApp}

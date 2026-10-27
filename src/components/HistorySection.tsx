@@ -1,6 +1,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
+  Check,
   Copy,
   Download,
   Edit3,
@@ -12,7 +13,7 @@ import {
   Upload,
   UserCheck,
 } from 'lucide-react';
-import { DailyContentEntry, PropertyCategory } from '../types/content';
+import { DailyContentEntry, DailyTodoLog, PropertyCategory } from '../types/content';
 import {
   calculateEngagementRate,
   formatDateID,
@@ -24,6 +25,7 @@ import {
 
 interface HistorySectionProps {
   entries: DailyContentEntry[];
+  todoLogs: DailyTodoLog[];
   onEditEntry: (entry: DailyContentEntry) => void;
   onDeleteEntry: (id: string) => void;
   onCopyWhatsApp: (entry: DailyContentEntry) => void;
@@ -34,6 +36,7 @@ interface HistorySectionProps {
 
 export const HistorySection: React.FC<HistorySectionProps> = ({
   entries,
+  todoLogs,
   onEditEntry,
   onDeleteEntry,
   onCopyWhatsApp,
@@ -289,6 +292,8 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
               const tt = entry.engagementByPlatform.tiktok;
               const ig = entry.engagementByPlatform.instagram;
               const fb = entry.engagementByPlatform.facebook;
+              const matchedTodo = todoLogs.find((t) => t.date === entry.date);
+              const doneTodos = matchedTodo ? matchedTodo.items.filter((i) => i.completed) : [];
 
               return (
                 <motion.div
@@ -456,6 +461,33 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
                       </div>
                     )}
                   </div>
+
+                  {/* Completed Todos for this Report Date */}
+                  {doneTodos.length > 0 && (
+                    <div
+                      style={{
+                        marginTop: '12px',
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        alignItems: 'center',
+                        gap: '6px',
+                      }}
+                    >
+                      <span style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
+                        Todo Selesai ({doneTodos.length}/{matchedTodo!.items.length}):
+                      </span>
+                      {doneTodos.map((td) => (
+                        <span
+                          key={td.id}
+                          className="pill-badge pill-green"
+                          style={{ fontSize: '0.72rem', padding: '2px 9px' }}
+                        >
+                          <Check size={11} />
+                          {td.title}
+                        </span>
+                      ))}
+                    </div>
+                  )}
 
                   {/* Optional Tags & Notes */}
                   {(entry.contentTypes.length > 0 || entry.notes) && (
