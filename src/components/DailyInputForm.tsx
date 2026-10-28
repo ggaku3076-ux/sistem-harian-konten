@@ -46,10 +46,12 @@ import {
   getActivePlatformCount,
   getActivePlatformNames,
   getCategoryLabel,
+  getContentItemTotals,
   getPlatformInteractions,
   getTodayDateString,
   getTotalInteractions,
   getTotalPostsPublished,
+  resizeContentItems,
   shiftDateString,
   syncTotalEngagement,
 } from '../utils/storage';
@@ -145,6 +147,7 @@ export const DailyInputForm: React.FC<DailyInputFormProps> = ({
   onUpdateTargets,
 }) => {
   const [showTargetConfig, setShowTargetConfig] = useState(false);
+  const [activeContentTab, setActiveContentTab] = useState<'all' | number>('all');
   const [activeMetricTab, setActiveMetricTab] = useState<SocialPlatformKey | 'all'>('tiktok');
   const [durationMode, setDurationMode] = useState<'menit' | 'jam_menit'>('menit');
 
@@ -184,23 +187,71 @@ export const DailyInputForm: React.FC<DailyInputFormProps> = ({
     }));
   };
 
-  const updatePlatformMetric = (
+  const updateContentCreated = (rawCount: number) => {
+    const nextCount = Math.max(0, Math.floor(rawCount || 0));
+    if (typeof activeContentTab === 'number' && activeContentTab >= nextCount) {
+      setActiveContentTab('all');
+    }
+    onChangeForm((prev) => {
+      const prevCount = prev.contentCreated;
+      const syncPlat = (key: SocialPlatformKey) => {
+        const cur = prev.platforms[key];
+        if (!cur.active) return cur;
+        if (nextCount > 0 && (cur.posts === prevCount || cur.posts === 0)) {
+          return { ...cur, posts: nextCount };
+        }
+        return cur;
+      };
+
+      return syncTotalEngagement({
+        ...prev,
+        contentCreated: nextCount,
+        contentItems: resizeContentItems(prev.contentItems, nextCount),
+        platforms: {
+          tiktok: syncPlat('tiktok'),
+          instagram: syncPlat('instagram'),
+          facebook: syncPlat('facebook'),
+        },
+      });
+    });
+  };
+
+  const updateContentItemTitle = (index: number, title: string) => {
+    onChangeForm((prev) => {
+      const resized = resizeContentItems(prev.contentItems, prev.contentCreated);
+      const nextItems = resized.map((item, idx) =>
+        idx === index ? { ...item, title } : item
+      );
+      return { ...prev, contentItems: nextItems };
+    });
+  };
+
+  const updateContentItemPlatformMetric = (
+    contentIndex: number,
     platformKey: SocialPlatformKey,
     metricKey: keyof PlatformEngagement,
     value: number
   ) => {
     onChangeForm((prev) => {
-      const updated: DailyContentEntry = {
+      const resized = resizeContentItems(prev.contentItems, prev.contentCreated);
+      const nextItems = resized.map((item, idx) =>
+        idx === contentIndex
+          ? {
+              ...item,
+              engagementByPlatform: {
+                ...item.engagementByPlatform,
+                [platformKey]: {
+                  ...item.engagementByPlatform[platformKey],
+                  [metricKey]: Math.max(0, value),
+                },
+              },
+            }
+          : item
+      );
+      return syncTotalEngagement({
         ...prev,
-        engagementByPlatform: {
-          ...prev.engagementByPlatform,
-          [platformKey]: {
-            ...prev.engagementByPlatform[platformKey],
-            [metricKey]: Math.max(0, value),
-          },
-        },
-      };
-      return syncTotalEngagement(updated);
+        contentItems: nextItems,
+      });
     });
   };
 
@@ -649,9 +700,7 @@ export const DailyInputForm: React.FC<DailyInputFormProps> = ({
                       <label className="apple-label">Jumlah Konten Dibuat Hari Ini</label>
                       <NumberStepper
                         value={form.contentCreated}
-                        onChange={(val) =>
-                          onChangeForm((prev) => ({ ...prev, contentCreated: val }))
-                        }
+                        onChange={(val) => updateContentCreated(val)}
                       />
                     </div>
 
@@ -665,6 +714,91 @@ export const DailyInputForm: React.FC<DailyInputFormProps> = ({
                       />
                     </div>
                   </div>
+
+                  {/* Dynamic Content Slots Preview & Optional Titles */}
+                  {form.contentCreated > 0 && (
+                    <div
+                      style={{
+                        backgroundColor: 'var(--bg-secondary)',
+                        borderRadius: '16px',
+                        padding: '14px 16px',
+                        marginBottom: '20px',
+                        border: '1px solid var(--border-light)',
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: 'flex',
+                          flexWrap: 'wrap',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '8px',
+                          marginBottom: '10px',
+                        }}
+                      >
+                        <span style={{ fontSize: '0.82rem', fontWeight: 700 }}>
+                          Daftar Konten Hari Ini ({form.contentCreated} Konten)
+                        </span>
+                        <span className="pill-badge pill-green" style={{ fontSize: '0.72rem' }}>
+                          <Check size={12} />
+                          Otomatis {form.contentCreated} form engagement di Bagian 2
+                        </span>
+                      </div>
+
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                          gap: '10px',
+                        }}
+                      >
+                        {resizeContentItems(form.contentItems, form.contentCreated).map(
+                          (item, idx) => (
+                            <div
+                              key={item.id}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                backgroundColor: '#ffffff',
+                                padding: '6px 10px',
+                                borderRadius: '12px',
+                                border: '1px solid var(--border-light)',
+                              }}
+                            >
+                              <span
+                                className="tabular-num"
+                                style={{
+                                  fontSize: '0.74rem',
+                                  fontWeight: 700,
+                                  backgroundColor: '#1d1d1f',
+                                  color: '#ffffff',
+                                  padding: '3px 8px',
+                                  borderRadius: '9999px',
+                                  flexShrink: 0,
+                                }}
+                              >
+                                #{idx + 1}
+                              </span>
+                              <input
+                                type="text"
+                                placeholder={`Judul Konten #${idx + 1} (opsional)`}
+                                className="apple-input"
+                                style={{
+                                  border: 'none',
+                                  backgroundColor: 'transparent',
+                                  padding: '4px 4px',
+                                  fontSize: '0.82rem',
+                                }}
+                                value={item.title}
+                                onChange={(e) => updateContentItemTitle(idx, e.target.value)}
+                              />
+                            </div>
+                          )
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   <div style={{ marginBottom: '20px' }}>
                     <span className="apple-label">
@@ -834,7 +968,9 @@ export const DailyInputForm: React.FC<DailyInputFormProps> = ({
                       onClick={() => onChangeStep('engagement')}
                       className="btn-primary"
                     >
-                      <span>Lanjut ke Engagement TT/IG/FB</span>
+                      <span>
+                        Lanjut ke Engagement ({form.contentCreated} Konten)
+                      </span>
                       <ArrowRight size={15} />
                     </button>
                   </div>
@@ -857,7 +993,7 @@ export const DailyInputForm: React.FC<DailyInputFormProps> = ({
                       flexWrap: 'wrap',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      gap: '10px',
+                      gap: '12px',
                       marginBottom: '18px',
                     }}
                   >
@@ -877,162 +1013,383 @@ export const DailyInputForm: React.FC<DailyInputFormProps> = ({
                       </div>
                       <div>
                         <h2 style={{ fontSize: '1.05rem', fontWeight: 700 }}>
-                          Metrik Engagement Terpisah per Aplikasi
+                          Metrik Engagement per Konten ({form.contentCreated} Konten)
                         </h2>
                         <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                          Salin angka dari TikTok, Instagram, dan Facebook — totalnya dijumlahkan otomatis
+                          Isi engagement untuk masing-masing konten (Konten #1 s/d #{Math.max(1, form.contentCreated)}) &mdash; totalnya dijumlahkan otomatis
                         </p>
                       </div>
                     </div>
 
-                    <span className="pill-badge pill-neutral tabular-num">
-                      ER Gabungan {engagementRate} &bull; {formatNumberID(totalInteractions)} Interaksi
-                    </span>
-                  </div>
-
-                  <div className="segmented-group" style={{ marginBottom: '18px', flexWrap: 'wrap' }}>
-                    {PLATFORM_META.map((pm) => {
-                      const pMetrics = form.engagementByPlatform[pm.key];
-                      const isSelected = activeMetricTab === pm.key;
-                      return (
-                        <button
-                          key={pm.key}
-                          type="button"
-                          className={`segmented-btn ${isSelected ? 'active' : ''}`}
-                          onClick={() => setActiveMetricTab(pm.key)}
-                        >
-                          <span>{pm.label}</span>
-                          <span
-                            className="tabular-num"
-                            style={{
-                              fontSize: '0.72rem',
-                              padding: '1px 7px',
-                              borderRadius: '9999px',
-                              backgroundColor: isSelected ? '#1d1d1f' : '#e5e5e7',
-                              color: isSelected ? '#ffffff' : 'var(--text-secondary)',
-                            }}
-                          >
-                            {formatNumberID(pMetrics.views)}v
-                          </span>
-                        </button>
-                      );
-                    })}
-                    <button
-                      type="button"
-                      className={`segmented-btn ${activeMetricTab === 'all' ? 'active' : ''}`}
-                      onClick={() => setActiveMetricTab('all')}
+                    {/* Quick Content Count Adjuster right inside Engagement Step */}
+                    <div
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        backgroundColor: 'var(--bg-secondary)',
+                        padding: '6px 10px',
+                        borderRadius: '14px',
+                        border: '1px solid var(--border-light)',
+                      }}
                     >
-                      <span>Tampil Semua</span>
-                    </button>
+                      <span style={{ fontSize: '0.76rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                        Jumlah Konten:
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => updateContentCreated(Math.max(0, form.contentCreated - 1))}
+                        className="btn-ghost"
+                        style={{ padding: '4px 7px', backgroundColor: '#ffffff', borderRadius: '8px' }}
+                        aria-label="Kurangi jumlah konten"
+                      >
+                        <Minus size={13} />
+                      </button>
+                      <span className="tabular-num" style={{ fontSize: '0.9rem', fontWeight: 700, minWidth: '18px', textAlign: 'center' }}>
+                        {form.contentCreated}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => updateContentCreated(form.contentCreated + 1)}
+                        className="btn-ghost"
+                        style={{ padding: '4px 7px', backgroundColor: '#ffffff', borderRadius: '8px' }}
+                        aria-label="Tambah jumlah konten"
+                      >
+                        <Plus size={13} />
+                      </button>
+                    </div>
                   </div>
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                    {visibleMetricPlatforms.map((pKey) => {
-                      const meta = PLATFORM_META.find((m) => m.key === pKey)!;
-                      const pData = form.engagementByPlatform[pKey];
-                      const pInter = getPlatformInteractions(pData);
-                      const pEr = calculatePlatformER(pData);
-                      const isPosted = form.platforms[pKey].active;
-
-                      return (
-                        <div
-                          key={pKey}
-                          style={{
-                            backgroundColor: 'var(--bg-secondary)',
-                            borderRadius: '18px',
-                            padding: '16px',
-                            border: '1px solid var(--border-light)',
-                          }}
-                        >
-                          <div
-                            style={{
-                              display: 'flex',
-                              flexWrap: 'wrap',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              gap: '8px',
-                              marginBottom: '12px',
-                            }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <span style={{ fontWeight: 700, fontSize: '0.94rem' }}>{meta.label}</span>
-                              {!isPosted && (
-                                <span className="pill-badge pill-amber" style={{ fontSize: '0.7rem' }}>
-                                  Belum ditandai posting
-                                </span>
-                              )}
-                            </div>
-                            <span
-                              className="tabular-num"
-                              style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600 }}
+                  {form.contentCreated === 0 ? (
+                    <div
+                      style={{
+                        textAlign: 'center',
+                        padding: '38px 20px',
+                        backgroundColor: 'var(--bg-secondary)',
+                        borderRadius: '18px',
+                        border: '1px solid var(--border-light)',
+                      }}
+                    >
+                      <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '14px' }}>
+                        Jumlah konten dibuat hari ini masih <strong>0</strong>. Tambahkan minimal 1 konten untuk mengisi metrik engagement.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => updateContentCreated(1)}
+                        className="btn-primary"
+                      >
+                        <Plus size={15} />
+                        <span>Set 1 Konten Hari Ini</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Content Switcher Tabs (Semua Konten / Konten #1 / Konten #2 / dst.) */}
+                      {form.contentCreated > 1 && (
+                        <div style={{ marginBottom: '14px' }}>
+                          <span className="apple-label" style={{ marginBottom: '6px' }}>
+                            Pilih Slot Konten ({form.contentCreated} Konten)
+                          </span>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                            <button
+                              type="button"
+                              onClick={() => setActiveContentTab('all')}
+                              style={{
+                                padding: '7px 14px',
+                                borderRadius: '9999px',
+                                fontSize: '0.8rem',
+                                fontWeight: 600,
+                                backgroundColor: activeContentTab === 'all' ? '#1d1d1f' : 'var(--bg-secondary)',
+                                color: activeContentTab === 'all' ? '#ffffff' : 'var(--text-secondary)',
+                                border: '1px solid var(--border-light)',
+                              }}
                             >
-                              ER {meta.short}: <strong style={{ color: '#1d1d1f' }}>{pEr}</strong> ({formatNumberID(pInter)} interaksi)
-                            </span>
-                          </div>
-
-                          <div className="metrics-grid">
-                            {METRIC_FIELDS.map((metric) => {
-                              const IconComp = metric.icon;
-                              const val = pData[metric.key];
+                              Tampil Semua ({form.contentCreated} Konten)
+                            </button>
+                            {resizeContentItems(form.contentItems, form.contentCreated).map((ci, idx) => {
+                              const sub = getContentItemTotals(ci);
+                              const isSel = activeContentTab === idx;
                               return (
-                                <div
-                                  key={metric.key}
+                                <button
+                                  key={ci.id}
+                                  type="button"
+                                  onClick={() => setActiveContentTab(idx)}
                                   style={{
-                                    backgroundColor: '#ffffff',
-                                    borderRadius: '14px',
-                                    padding: '12px',
+                                    padding: '7px 14px',
+                                    borderRadius: '9999px',
+                                    fontSize: '0.8rem',
+                                    fontWeight: 600,
+                                    backgroundColor: isSel ? '#1d1d1f' : 'var(--bg-secondary)',
+                                    color: isSel ? '#ffffff' : 'var(--text-secondary)',
                                     border: '1px solid var(--border-light)',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
                                   }}
                                 >
-                                  <div
+                                  <span>
+                                    Konten #{idx + 1}
+                                    {ci.title ? ` — ${ci.title}` : ''}
+                                  </span>
+                                  <span
+                                    className="tabular-num"
                                     style={{
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'space-between',
-                                      marginBottom: '6px',
+                                      fontSize: '0.7rem',
+                                      padding: '1px 7px',
+                                      borderRadius: '9999px',
+                                      backgroundColor: isSel ? 'rgba(255,255,255,0.2)' : '#e5e5e7',
+                                      color: isSel ? '#ffffff' : 'var(--text-primary)',
                                     }}
                                   >
-                                    <span
-                                      style={{
-                                        fontSize: '0.75rem',
-                                        fontWeight: 600,
-                                        color: 'var(--text-secondary)',
-                                      }}
-                                    >
-                                      {metric.label}
-                                    </span>
-                                    <IconComp size={13} color="#86868b" />
-                                  </div>
-                                  <input
-                                    type="number"
-                                    min={0}
-                                    placeholder="0"
-                                    className="apple-input tabular-num"
-                                    style={{
-                                      backgroundColor: 'var(--bg-secondary)',
-                                      padding: '9px 11px',
-                                      fontSize: '1rem',
-                                      fontWeight: 700,
-                                    }}
-                                    value={val === 0 ? '' : val}
-                                    onChange={(e) => {
-                                      const parsed = Math.max(0, parseInt(e.target.value, 10) || 0);
-                                      updatePlatformMetric(pKey, metric.key, parsed);
-                                    }}
-                                  />
-                                </div>
+                                    {formatNumberID(sub.views)}v
+                                  </span>
+                                </button>
                               );
                             })}
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
+                      )}
+
+                      {/* Social Platform Filter (TT / IG / FB / Tampil Semua Sosmed) */}
+                      <div style={{ marginBottom: '18px' }}>
+                        <span className="apple-label" style={{ marginBottom: '6px' }}>
+                          Filter Aplikasi Sosmed
+                        </span>
+                        <div className="segmented-group" style={{ flexWrap: 'wrap' }}>
+                          {PLATFORM_META.map((pm) => {
+                            const pMetrics = form.engagementByPlatform[pm.key];
+                            const isSelected = activeMetricTab === pm.key;
+                            return (
+                              <button
+                                key={pm.key}
+                                type="button"
+                                className={`segmented-btn ${isSelected ? 'active' : ''}`}
+                                onClick={() => setActiveMetricTab(pm.key)}
+                              >
+                                <span>{pm.label}</span>
+                                <span
+                                  className="tabular-num"
+                                  style={{
+                                    fontSize: '0.72rem',
+                                    padding: '1px 7px',
+                                    borderRadius: '9999px',
+                                    backgroundColor: isSelected ? '#1d1d1f' : '#e5e5e7',
+                                    color: isSelected ? '#ffffff' : 'var(--text-secondary)',
+                                  }}
+                                >
+                                  {formatNumberID(pMetrics.views)}v
+                                </span>
+                              </button>
+                            );
+                          })}
+                          <button
+                            type="button"
+                            className={`segmented-btn ${activeMetricTab === 'all' ? 'active' : ''}`}
+                            onClick={() => setActiveMetricTab('all')}
+                          >
+                            <span>Semua Sosmed</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Per-Content Engagement Cards (Konten #1, Konten #2, ...) */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                        {resizeContentItems(form.contentItems, form.contentCreated).map(
+                          (contentItem, cIdx) => {
+                            if (activeContentTab !== 'all' && activeContentTab !== cIdx) {
+                              return null;
+                            }
+                            const cTotals = getContentItemTotals(contentItem);
+                            const cInter = getPlatformInteractions(cTotals);
+                            const cEr = calculatePlatformER(cTotals);
+
+                            return (
+                              <div
+                                key={contentItem.id}
+                                style={{
+                                  borderRadius: '20px',
+                                  padding: '18px',
+                                  backgroundColor: '#ffffff',
+                                  border:
+                                    form.contentCreated > 1
+                                      ? '1.5px solid var(--border-strong)'
+                                      : '1px solid var(--border-light)',
+                                }}
+                              >
+                                {/* Konten #k Header + Optional Title + Subtotal */}
+                                <div
+                                  style={{
+                                    display: 'flex',
+                                    flexWrap: 'wrap',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    gap: '10px',
+                                    marginBottom: '14px',
+                                    paddingBottom: '12px',
+                                    borderBottom: '1px solid var(--border-light)',
+                                  }}
+                                >
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '1 1 240px' }}>
+                                    <span
+                                      className="pill-badge pill-dark tabular-num"
+                                      style={{ fontSize: '0.74rem', flexShrink: 0 }}
+                                    >
+                                      KONTEN #{cIdx + 1}
+                                    </span>
+                                    <input
+                                      type="text"
+                                      placeholder={`Nama / Judul Konten #${cIdx + 1} (opsional)...`}
+                                      className="apple-input"
+                                      style={{
+                                        padding: '6px 11px',
+                                        fontSize: '0.84rem',
+                                        maxWidth: '300px',
+                                      }}
+                                      value={contentItem.title}
+                                      onChange={(e) => updateContentItemTitle(cIdx, e.target.value)}
+                                    />
+                                  </div>
+
+                                  <span
+                                    className="pill-badge pill-neutral tabular-num"
+                                    style={{ fontSize: '0.76rem' }}
+                                  >
+                                    Subtotal Konten #{cIdx + 1}: {formatNumberID(cTotals.views)}v &bull;{' '}
+                                    {formatNumberID(cInter)} interaksi &bull; ER {cEr}
+                                  </span>
+                                </div>
+
+                                {/* Platforms inside Konten #k */}
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                                  {visibleMetricPlatforms.map((pKey) => {
+                                    const meta = PLATFORM_META.find((m) => m.key === pKey)!;
+                                    const pData = contentItem.engagementByPlatform[pKey];
+                                    const pInter = getPlatformInteractions(pData);
+                                    const pEr = calculatePlatformER(pData);
+                                    const isPosted = form.platforms[pKey].active;
+
+                                    return (
+                                      <div
+                                        key={`${contentItem.id}-${pKey}`}
+                                        style={{
+                                          backgroundColor: 'var(--bg-secondary)',
+                                          borderRadius: '16px',
+                                          padding: '14px',
+                                          border: '1px solid var(--border-light)',
+                                        }}
+                                      >
+                                        <div
+                                          style={{
+                                            display: 'flex',
+                                            flexWrap: 'wrap',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between',
+                                            gap: '8px',
+                                            marginBottom: '10px',
+                                          }}
+                                        >
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <span style={{ fontWeight: 700, fontSize: '0.9rem' }}>
+                                              {meta.label} &mdash; Konten #{cIdx + 1}
+                                            </span>
+                                            {!isPosted && (
+                                              <span className="pill-badge pill-amber" style={{ fontSize: '0.68rem' }}>
+                                                Belum ditandai posting
+                                              </span>
+                                            )}
+                                          </div>
+                                          <span
+                                            className="tabular-num"
+                                            style={{
+                                              fontSize: '0.76rem',
+                                              color: 'var(--text-secondary)',
+                                              fontWeight: 600,
+                                            }}
+                                          >
+                                            ER {meta.short}:{' '}
+                                            <strong style={{ color: '#1d1d1f' }}>{pEr}</strong> (
+                                            {formatNumberID(pInter)} interaksi)
+                                          </span>
+                                        </div>
+
+                                        <div className="metrics-grid">
+                                          {METRIC_FIELDS.map((metric) => {
+                                            const IconComp = metric.icon;
+                                            const val = pData[metric.key];
+                                            return (
+                                              <div
+                                                key={metric.key}
+                                                style={{
+                                                  backgroundColor: '#ffffff',
+                                                  borderRadius: '14px',
+                                                  padding: '11px',
+                                                  border: '1px solid var(--border-light)',
+                                                }}
+                                              >
+                                                <div
+                                                  style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'space-between',
+                                                    marginBottom: '6px',
+                                                  }}
+                                                >
+                                                  <span
+                                                    style={{
+                                                      fontSize: '0.74rem',
+                                                      fontWeight: 600,
+                                                      color: 'var(--text-secondary)',
+                                                    }}
+                                                  >
+                                                    {metric.label}
+                                                  </span>
+                                                  <IconComp size={13} color="#86868b" />
+                                                </div>
+                                                <input
+                                                  type="number"
+                                                  min={0}
+                                                  placeholder="0"
+                                                  className="apple-input tabular-num"
+                                                  style={{
+                                                    backgroundColor: 'var(--bg-secondary)',
+                                                    padding: '8px 10px',
+                                                    fontSize: '0.98rem',
+                                                    fontWeight: 700,
+                                                  }}
+                                                  value={val === 0 ? '' : val}
+                                                  onChange={(e) => {
+                                                    const parsed = Math.max(
+                                                      0,
+                                                      parseInt(e.target.value, 10) || 0
+                                                    );
+                                                    updateContentItemPlatformMetric(
+                                                      cIdx,
+                                                      pKey,
+                                                      metric.key,
+                                                      parsed
+                                                    );
+                                                  }}
+                                                />
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          }
+                        )}
+                      </div>
+                    </>
+                  )}
 
                   {/* Auto-Calculated Total Summary Strip */}
                   <div
                     style={{
-                      marginTop: '16px',
+                      marginTop: '18px',
                       backgroundColor: '#1d1d1f',
                       color: '#ffffff',
                       borderRadius: '18px',
@@ -1054,7 +1411,7 @@ export const DailyInputForm: React.FC<DailyInputFormProps> = ({
                           letterSpacing: '0.06em',
                         }}
                       >
-                        Total Akumulasi Otomatis (TT + IG + FB)
+                        Total Akumulasi Otomatis ({form.contentCreated} Konten &bull; TT + IG + FB)
                       </div>
                       <div className="tabular-num" style={{ fontSize: '0.94rem', fontWeight: 700, marginTop: '3px' }}>
                         {formatNumberID(form.views)} Views &bull; {formatNumberID(form.likes)} Likes &bull;{' '}
@@ -1072,7 +1429,7 @@ export const DailyInputForm: React.FC<DailyInputFormProps> = ({
                         fontWeight: 700,
                       }}
                     >
-                      ER: {engagementRate}
+                      ER Gabungan: {engagementRate} &bull; {formatNumberID(totalInteractions)} Interaksi
                     </span>
                   </div>
 
@@ -1804,6 +2161,38 @@ export const DailyInputForm: React.FC<DailyInputFormProps> = ({
                     {activePlatformCount}/3 ({activePlatformNames.join(', ') || '-'})
                   </strong>
                 </div>
+                {form.contentCreated > 1 && (
+                  <div
+                    style={{
+                      backgroundColor: 'var(--bg-secondary)',
+                      borderRadius: '12px',
+                      padding: '8px 10px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '4px',
+                      border: '1px solid var(--border-light)',
+                    }}
+                  >
+                    <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                      Rincian {form.contentCreated} Konten:
+                    </span>
+                    {resizeContentItems(form.contentItems, form.contentCreated).map((ci, idx) => {
+                      const sub = getContentItemTotals(ci);
+                      return (
+                        <div
+                          key={ci.id}
+                          style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.77rem' }}
+                        >
+                          <span style={{ color: 'var(--text-secondary)' }}>
+                            Konten #{idx + 1}
+                            {ci.title ? ` (${ci.title})` : ''}
+                          </span>
+                          <strong className="tabular-num">{formatNumberID(sub.views)} views</strong>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ color: 'var(--text-secondary)' }}>Views TT / IG / FB</span>
                   <strong className="tabular-num">

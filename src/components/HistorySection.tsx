@@ -23,6 +23,7 @@ import {
   formatNumberID,
   getActivePlatformCount,
   getCategoryLabel,
+  getContentItemTotals,
 } from '../utils/storage';
 
 interface HistorySectionProps {
@@ -546,6 +547,35 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
                       </div>
                     )}
                   </div>
+
+                  {/* Per-content Breakdown when multiple contents exist */}
+                  {entry.contentItems && entry.contentItems.length > 1 && (
+                    <div
+                      style={{
+                        marginTop: '12px',
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        alignItems: 'center',
+                        gap: '6px',
+                      }}
+                    >
+                      <span style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
+                        Rincian ({entry.contentItems.length} Konten):
+                      </span>
+                      {entry.contentItems.map((ci, idx) => {
+                        const sub = getContentItemTotals(ci);
+                        return (
+                          <span
+                            key={ci.id}
+                            className="pill-badge pill-neutral tabular-num"
+                            style={{ fontSize: '0.74rem', padding: '3px 9px' }}
+                          >
+                            <strong>#{idx + 1}{ci.title ? ` ${ci.title}` : ''}:</strong> {formatNumberID(sub.views)}v &bull; {formatNumberID(sub.likes)}L/{formatNumberID(sub.comments)}C
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
 
                   {/* Completed Todos for this Report Date */}
                   {doneTodos.length > 0 && (

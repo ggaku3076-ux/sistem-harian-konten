@@ -49,6 +49,16 @@ export interface PlatformEngagement {
   waLinkClicks: number;
 }
 
+export interface ContentItemEngagement {
+  id: string;
+  title: string;
+  engagementByPlatform: {
+    tiktok: PlatformEngagement;
+    instagram: PlatformEngagement;
+    facebook: PlatformEngagement;
+  };
+}
+
 export interface DailyContentEntry {
   id: string;
   date: string; // YYYY-MM-DD
@@ -58,6 +68,7 @@ export interface DailyContentEntry {
 
   // Produksi & Distribusi
   contentCreated: number;
+  contentItems: ContentItemEngagement[];
   platforms: {
     tiktok: SocialPlatformEntry;
     instagram: SocialPlatformEntry;

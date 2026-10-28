@@ -1,4 +1,5 @@
 import {
+  ContentItemEngagement,
   DailyContentEntry,
   DailyTargets,
   DailyTodoLog,
@@ -35,13 +36,39 @@ export function createEmptyPlatformEngagement(): PlatformEngagement {
   };
 }
 
-export function syncTotalEngagement(entry: DailyContentEntry): DailyContentEntry {
-  const tt = entry.engagementByPlatform.tiktok;
-  const ig = entry.engagementByPlatform.instagram;
-  const fb = entry.engagementByPlatform.facebook;
-
+export function createEmptyContentItem(index: number): ContentItemEngagement {
   return {
-    ...entry,
+    id: `konten-${index + 1}-${Math.random().toString(36).slice(2, 7)}`,
+    title: '',
+    engagementByPlatform: {
+      tiktok: createEmptyPlatformEngagement(),
+      instagram: createEmptyPlatformEngagement(),
+      facebook: createEmptyPlatformEngagement(),
+    },
+  };
+}
+
+export function resizeContentItems(
+  existing: ContentItemEngagement[] | undefined,
+  targetCount: number
+): ContentItemEngagement[] {
+  const safeCount = Math.max(0, Math.floor(targetCount || 0));
+  const current = Array.isArray(existing) ? existing : [];
+  if (current.length === safeCount) return current;
+  if (current.length > safeCount) return current.slice(0, safeCount);
+
+  const next = [...current];
+  for (let i = current.length; i < safeCount; i++) {
+    next.push(createEmptyContentItem(i));
+  }
+  return next;
+}
+
+export function getContentItemTotals(item: ContentItemEngagement): PlatformEngagement {
+  const tt = item.engagementByPlatform.tiktok;
+  const ig = item.engagementByPlatform.instagram;
+  const fb = item.engagementByPlatform.facebook;
+  return {
     views: (tt.views || 0) + (ig.views || 0) + (fb.views || 0),
     likes: (tt.likes || 0) + (ig.likes || 0) + (fb.likes || 0),
     comments: (tt.comments || 0) + (ig.comments || 0) + (fb.comments || 0),
@@ -51,11 +78,49 @@ export function syncTotalEngagement(entry: DailyContentEntry): DailyContentEntry
   };
 }
 
+function sumPlatformMetrics(items: PlatformEngagement[]): PlatformEngagement {
+  return items.reduce(
+    (acc, m) => ({
+      views: acc.views + (m.views || 0),
+      likes: acc.likes + (m.likes || 0),
+      comments: acc.comments + (m.comments || 0),
+      shares: acc.shares + (m.shares || 0),
+      saves: acc.saves + (m.saves || 0),
+      waLinkClicks: acc.waLinkClicks + (m.waLinkClicks || 0),
+    }),
+    createEmptyPlatformEngagement()
+  );
+}
+
+export function syncTotalEngagement(entry: DailyContentEntry): DailyContentEntry {
+  const resizedItems = resizeContentItems(entry.contentItems, entry.contentCreated);
+
+  const tt = sumPlatformMetrics(resizedItems.map((it) => it.engagementByPlatform.tiktok));
+  const ig = sumPlatformMetrics(resizedItems.map((it) => it.engagementByPlatform.instagram));
+  const fb = sumPlatformMetrics(resizedItems.map((it) => it.engagementByPlatform.facebook));
+
+  return {
+    ...entry,
+    contentItems: resizedItems,
+    engagementByPlatform: {
+      tiktok: tt,
+      instagram: ig,
+      facebook: fb,
+    },
+    views: tt.views + ig.views + fb.views,
+    likes: tt.likes + ig.likes + fb.likes,
+    comments: tt.comments + ig.comments + fb.comments,
+    shares: tt.shares + ig.shares + fb.shares,
+    saves: tt.saves + ig.saves + fb.saves,
+    waLinkClicks: tt.waLinkClicks + ig.waLinkClicks + fb.waLinkClicks,
+  };
+}
+
 export function normalizeEntry(raw: Partial<DailyContentEntry>): DailyContentEntry {
   const fallback = createEmptyEntry(raw.date || getTodayDateString());
   const hasPerPlatform = Boolean(raw.engagementByPlatform);
 
-  const engagementByPlatform = hasPerPlatform
+  const legacyEngagementByPlatform = hasPerPlatform
     ? {
         tiktok: { ...createEmptyPlatformEngagement(), ...raw.engagementByPlatform?.tiktok },
         instagram: { ...createEmptyPlatformEngagement(), ...raw.engagementByPlatform?.instagram },
@@ -74,15 +139,48 @@ export function normalizeEntry(raw: Partial<DailyContentEntry>): DailyContentEnt
         facebook: createEmptyPlatformEngagement(),
       };
 
+  const count = typeof raw.contentCreated === 'number' ? Math.max(0, raw.contentCreated) : 1;
+
+  let normalizedItems: ContentItemEngagement[];
+  if (Array.isArray(raw.contentItems) && raw.contentItems.length > 0) {
+    normalizedItems = resizeContentItems(
+      raw.contentItems.map((ci, idx) => ({
+        id: ci.id || `konten-${idx + 1}-${Math.random().toString(36).slice(2, 7)}`,
+        title: ci.title || '',
+        engagementByPlatform: {
+          tiktok: { ...createEmptyPlatformEngagement(), ...ci.engagementByPlatform?.tiktok },
+          instagram: { ...createEmptyPlatformEngagement(), ...ci.engagementByPlatform?.instagram },
+          facebook: { ...createEmptyPlatformEngagement(), ...ci.engagementByPlatform?.facebook },
+        },
+      })),
+      count
+    );
+  } else {
+    normalizedItems = resizeContentItems(
+      count > 0
+        ? [
+            {
+              id: `konten-1-${Math.random().toString(36).slice(2, 7)}`,
+              title: '',
+              engagementByPlatform: legacyEngagementByPlatform,
+            },
+          ]
+        : [],
+      count
+    );
+  }
+
   return syncTotalEngagement({
     ...fallback,
     ...raw,
+    contentCreated: count,
+    contentItems: normalizedItems,
     platforms: {
       tiktok: raw.platforms?.tiktok ?? fallback.platforms.tiktok,
       instagram: raw.platforms?.instagram ?? fallback.platforms.instagram,
       facebook: raw.platforms?.facebook ?? fallback.platforms.facebook,
     },
-    engagementByPlatform,
+    engagementByPlatform: legacyEngagementByPlatform,
   });
 }
 
@@ -103,6 +201,7 @@ export function createEmptyEntry(date: string = getTodayDateString()): DailyCont
     projectName: '',
     contentTypes: ['Video Tour Rumah'],
     contentCreated: 1,
+    contentItems: [createEmptyContentItem(0)],
     platforms: {
       tiktok: { active: true, posts: 1 },
       instagram: { active: true, posts: 1 },
@@ -350,6 +449,18 @@ export function formatWhatsAppReport(entry: DailyContentEntry): string {
         ].join('\n')
       : '';
 
+  const perContentLines =
+    synced.contentItems.length > 1
+      ? [
+          `*Rincian per Konten (${synced.contentItems.length} Konten):*`,
+          ...synced.contentItems.map((ci, idx) => {
+            const sub = getContentItemTotals(ci);
+            const label = ci.title ? `Konten #${idx + 1} (${ci.title})` : `Konten #${idx + 1}`;
+            return `• ${label}: ${formatNumberID(sub.views)} views | ${formatNumberID(sub.likes)}L | ${formatNumberID(sub.comments)}C | ${formatNumberID(sub.shares)}S | ${formatNumberID(sub.waLinkClicks)} WA`;
+          }),
+        ].join('\n')
+      : '';
+
   return [
     `*LAPORAN KONTEN HARIAN PEMASARAN PROPERTI*`,
     `Tanggal: ${formatDateID(synced.date)}`,
@@ -362,7 +473,8 @@ export function formatWhatsAppReport(entry: DailyContentEntry): string {
     `• Listing Marketplace: ${synced.marketplacePosted} iklan`,
     `• Live Streaming: ${liveText}`,
     ``,
-    `*2. Engagement per Platform*`,
+    `*2. Engagement Konten & Platform*`,
+    perContentLines,
     fmtMetricLine('TikTok', tt),
     fmtMetricLine('Instagram', ig),
     fmtMetricLine('Facebook', fb),
