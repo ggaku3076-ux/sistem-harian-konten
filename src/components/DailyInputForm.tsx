@@ -5,15 +5,18 @@ import {
   ArrowRight,
   Bookmark,
   Building,
+  Calculator,
   Calendar,
   Check,
   ChevronLeft,
   ChevronRight,
   Copy,
   Edit3,
+  ExternalLink,
   Eye,
   Heart,
   Layers,
+  Lightbulb,
   type LucideIcon,
   MessageCircle,
   Minus,
@@ -25,16 +28,21 @@ import {
   Send,
   SlidersHorizontal,
   Sparkles,
+  Trash2,
+  UserPlus,
   Users,
 } from 'lucide-react';
 import {
   DailyContentEntry,
   DailyTargets,
   InputStep,
+  LeadStatus,
   LivePlatform,
   PlatformEngagement,
   PropertyCategory,
+  ProspectLead,
   SocialPlatformKey,
+  TodoCategory,
 } from '../types/content';
 import {
   CONTENT_TYPE_PRESETS,
@@ -55,6 +63,8 @@ import {
   shiftDateString,
   syncTotalEngagement,
 } from '../utils/storage';
+import { KprCalculatorModal } from './KprCalculatorModal';
+import { ContentIdeasModal } from './ContentIdeasModal';
 
 interface DailyInputFormProps {
   form: DailyContentEntry;
@@ -70,6 +80,7 @@ interface DailyInputFormProps {
   onLoadExistingDate: (entry: DailyContentEntry) => void;
   onCopyWhatsApp: (entry: DailyContentEntry) => void;
   onUpdateTargets: (targets: DailyTargets) => void;
+  onAddTodo?: (title: string, category: TodoCategory) => void;
 }
 
 const METRIC_FIELDS: {
@@ -145,17 +156,117 @@ export const DailyInputForm: React.FC<DailyInputFormProps> = ({
   onLoadExistingDate,
   onCopyWhatsApp,
   onUpdateTargets,
+  onAddTodo,
 }) => {
   const [showTargetConfig, setShowTargetConfig] = useState(false);
   const [activeContentTab, setActiveContentTab] = useState<'all' | number>('all');
   const [activeMetricTab, setActiveMetricTab] = useState<SocialPlatformKey | 'all'>('tiktok');
   const [durationMode, setDurationMode] = useState<'menit' | 'jam_menit'>('menit');
+  const [showKprModal, setShowKprModal] = useState(false);
+  const [showIdeasModal, setShowIdeasModal] = useState(false);
+
+  // Mini CRM Lead State
+  const [isAddingLead, setIsAddingLead] = useState(false);
+  const [newLeadName, setNewLeadName] = useState('');
+  const [newLeadPhone, setNewLeadPhone] = useState('');
+  const [newLeadCategory, setNewLeadCategory] = useState<'subsidi' | 'komersil'>('subsidi');
+  const [newLeadStatus, setNewLeadStatus] = useState<LeadStatus>('chat_masuk');
+  const [newLeadNotes, setNewLeadNotes] = useState('');
 
   const activePlatformCount = getActivePlatformCount(form);
   const activePlatformNames = getActivePlatformNames(form);
   const totalPosts = getTotalPostsPublished(form);
   const totalInteractions = getTotalInteractions(form);
   const engagementRate = calculateEngagementRate(form);
+
+  const handleAddLead = () => {
+    if (!newLeadName.trim() && !newLeadPhone.trim()) return;
+    const newLead: ProspectLead = {
+      id: `lead-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      name: newLeadName.trim() || 'Prospek Baru',
+      phone: newLeadPhone.trim(),
+      category: newLeadCategory,
+      status: newLeadStatus,
+      notes: newLeadNotes.trim() || undefined,
+      createdAt: new Date().toISOString(),
+    };
+
+    onChangeForm((prev) => {
+      const currentList = Array.isArray(prev.leadsList) ? prev.leadsList : [];
+      const nextList = [newLead, ...currentList];
+      const subCount = nextList.filter((l) => l.category === 'subsidi').length;
+      const komCount = nextList.filter((l) => l.category === 'komersil').length;
+      const srvCount = nextList.filter(
+        (l) => l.status === 'jadwal_survey' || l.status === 'sudah_survey'
+      ).length;
+      const bkgCount = nextList.filter(
+        (l) => l.status === 'pemberkasan_kpr' || l.status === 'booking_akad'
+      ).length;
+
+      return {
+        ...prev,
+        hasProspect: true,
+        leadsList: nextList,
+        prospectTotal: Math.max(prev.prospectTotal, nextList.length),
+        prospectSubsidi: Math.max(prev.prospectSubsidi, subCount),
+        prospectKomersil: Math.max(prev.prospectKomersil, komCount),
+        surveyCount: Math.max(prev.surveyCount, srvCount),
+        bookingCount: Math.max(prev.bookingCount, bkgCount),
+      };
+    });
+
+    setNewLeadName('');
+    setNewLeadPhone('');
+    setNewLeadNotes('');
+    setIsAddingLead(false);
+  };
+
+  const handleUpdateLeadStatus = (leadId: string, status: LeadStatus) => {
+    onChangeForm((prev) => {
+      const currentList = Array.isArray(prev.leadsList) ? prev.leadsList : [];
+      const nextList = currentList.map((l) => (l.id === leadId ? { ...l, status } : l));
+      const srvCount = nextList.filter(
+        (l) => l.status === 'jadwal_survey' || l.status === 'sudah_survey'
+      ).length;
+      const bkgCount = nextList.filter(
+        (l) => l.status === 'pemberkasan_kpr' || l.status === 'booking_akad'
+      ).length;
+
+      return {
+        ...prev,
+        leadsList: nextList,
+        surveyCount: Math.max(prev.surveyCount, srvCount),
+        bookingCount: Math.max(prev.bookingCount, bkgCount),
+      };
+    });
+  };
+
+  const handleDeleteLead = (leadId: string) => {
+    onChangeForm((prev) => {
+      const currentList = Array.isArray(prev.leadsList) ? prev.leadsList : [];
+      const nextList = currentList.filter((l) => l.id !== leadId);
+      return {
+        ...prev,
+        leadsList: nextList,
+      };
+    });
+  };
+
+  const getWhatsAppDirectUrl = (lead: ProspectLead) => {
+    const digitsOnly = lead.phone.replace(/[^0-9]/g, '');
+    let intlPhone = digitsOnly;
+    if (digitsOnly.startsWith('0')) {
+      intlPhone = '62' + digitsOnly.slice(1);
+    } else if (!digitsOnly.startsWith('62')) {
+      intlPhone = '62' + digitsOnly;
+    }
+    const textMsg = `Halo Kak ${lead.name}, terima kasih sudah menghubungi pemasaran perumahan ${
+      form.projectName || 'kami'
+    }. Mengenai minat Kakak untuk unit ${
+      lead.category === 'subsidi' ? 'Rumah Subsidi' : 'Rumah Komersil'
+    }, apakah ada yang bisa kami bantu jelaskan atau mau jadwalkan survey lokasi bersama tim kami?`;
+    return `https://wa.me/${intlPhone}?text=${encodeURIComponent(textMsg)}`;
+  };
 
   const togglePlatform = (key: SocialPlatformKey) => {
     onChangeForm((prev) => {
@@ -393,6 +504,25 @@ export const DailyInputForm: React.FC<DailyInputFormProps> = ({
               )}
             </div>
 
+            <button
+              type="button"
+              onClick={() => setShowIdeasModal(true)}
+              className="btn-secondary"
+              style={{ backgroundColor: '#ffffff', padding: '6px 12px', fontSize: '0.8rem' }}
+            >
+              <Lightbulb size={13} />
+              <span>Bank Ide</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowKprModal(true)}
+              className="btn-secondary"
+              style={{ backgroundColor: '#ffffff', padding: '6px 12px', fontSize: '0.8rem' }}
+            >
+              <Calculator size={13} />
+              <span>Kalkulator KPR</span>
+            </button>
+
             {isEditingExisting && (
               <>
                 <span className="pill-badge pill-blue" style={{ padding: '7px 14px' }}>
@@ -616,7 +746,36 @@ export const DailyInputForm: React.FC<DailyInputFormProps> = ({
                   </div>
 
                   <div>
-                    <span className="apple-label">Tema / Jenis Konten Hari Ini</span>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        marginBottom: '8px',
+                      }}
+                    >
+                      <span className="apple-label" style={{ marginBottom: 0 }}>
+                        Tema / Jenis Konten Hari Ini
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setShowIdeasModal(true)}
+                        style={{
+                          fontSize: '0.74rem',
+                          fontWeight: 600,
+                          color: 'var(--accent)',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <Lightbulb size={12} />
+                        <span>Buka Bank Ide &amp; Skrip Hook</span>
+                      </button>
+                    </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                       {CONTENT_TYPE_PRESETS.map((preset) => {
                         const active = form.contentTypes.includes(preset);
@@ -1925,6 +2084,337 @@ export const DailyInputForm: React.FC<DailyInputFormProps> = ({
                             />
                           </div>
                         </div>
+
+                        {/* Mini CRM Header & Actions */}
+                        <div
+                          style={{
+                            marginTop: '16px',
+                            paddingTop: '16px',
+                            borderTop: '1px solid var(--border-light)',
+                            display: 'flex',
+                            flexWrap: 'wrap',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: '10px',
+                            marginBottom: '12px',
+                          }}
+                        >
+                          <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <h3 style={{ fontSize: '0.95rem', fontWeight: 700, margin: 0 }}>
+                                Pipeline Follow-up Prospek (Mini CRM)
+                              </h3>
+                              <span
+                                className="pill-badge pill-neutral tabular-num"
+                                style={{ fontSize: '0.72rem' }}
+                              >
+                                {Array.isArray(form.leadsList) ? form.leadsList.length : 0} Kontak
+                              </span>
+                            </div>
+                            <p
+                              style={{
+                                fontSize: '0.76rem',
+                                color: 'var(--text-muted)',
+                                margin: '2px 0 0 0',
+                              }}
+                            >
+                              Follow-up 1-klik via WhatsApp &amp; pantau perjalanan dari chat hingga akad
+                            </p>
+                          </div>
+
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            <button
+                              type="button"
+                              onClick={() => setShowKprModal(true)}
+                              className="btn-secondary"
+                              style={{ padding: '6px 12px', fontSize: '0.76rem' }}
+                            >
+                              <Calculator size={13} />
+                              <span>Simulasi KPR</span>
+                            </button>
+                            {!isAddingLead && (
+                              <button
+                                type="button"
+                                onClick={() => setIsAddingLead(true)}
+                                className="btn-primary"
+                                style={{ padding: '6px 14px', fontSize: '0.76rem' }}
+                              >
+                                <UserPlus size={13} />
+                                <span>+ Tambah Prospek WA</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Add Lead Inline Form */}
+                        {isAddingLead && (
+                          <div
+                            style={{
+                              backgroundColor: 'var(--bg-secondary)',
+                              borderRadius: '16px',
+                              padding: '16px',
+                              marginBottom: '16px',
+                              border: '1px solid var(--border-strong)',
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: '0.76rem',
+                                fontWeight: 700,
+                                color: '#1d1d1f',
+                                display: 'block',
+                                marginBottom: '12px',
+                              }}
+                            >
+                              Input Prospek Baru
+                            </span>
+
+                            <div
+                              style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                                gap: '10px',
+                                marginBottom: '12px',
+                              }}
+                            >
+                              <div>
+                                <label className="apple-label">Nama Prospek</label>
+                                <input
+                                  type="text"
+                                  placeholder="Contoh: Bpk. Budi Santoso"
+                                  className="apple-input"
+                                  style={{ backgroundColor: '#ffffff', padding: '8px 11px' }}
+                                  value={newLeadName}
+                                  onChange={(e) => setNewLeadName(e.target.value)}
+                                />
+                              </div>
+
+                              <div>
+                                <label className="apple-label">Nomor WhatsApp</label>
+                                <input
+                                  type="tel"
+                                  placeholder="Contoh: 081234567890"
+                                  className="apple-input tabular-num"
+                                  style={{ backgroundColor: '#ffffff', padding: '8px 11px' }}
+                                  value={newLeadPhone}
+                                  onChange={(e) => setNewLeadPhone(e.target.value)}
+                                />
+                              </div>
+
+                              <div>
+                                <label className="apple-label">Minat Unit</label>
+                                <div className="segmented-group" style={{ margin: 0 }}>
+                                  <button
+                                    type="button"
+                                    className={`segmented-btn ${newLeadCategory === 'subsidi' ? 'active' : ''}`}
+                                    onClick={() => setNewLeadCategory('subsidi')}
+                                    style={{ padding: '7px 10px', fontSize: '0.75rem' }}
+                                  >
+                                    Subsidi
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className={`segmented-btn ${newLeadCategory === 'komersil' ? 'active' : ''}`}
+                                    onClick={() => setNewLeadCategory('komersil')}
+                                    style={{ padding: '7px 10px', fontSize: '0.75rem' }}
+                                  >
+                                    Komersil
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div>
+                                <label className="apple-label">Status Prospek</label>
+                                <select
+                                  className="apple-input"
+                                  style={{ backgroundColor: '#ffffff', padding: '8px 11px' }}
+                                  value={newLeadStatus}
+                                  onChange={(e) => setNewLeadStatus(e.target.value as LeadStatus)}
+                                >
+                                  <option value="chat_masuk">Chat Masuk</option>
+                                  <option value="jadwal_survey">Jadwal Survey</option>
+                                  <option value="sudah_survey">Sudah Survey</option>
+                                  <option value="pemberkasan_kpr">Pemberkasan KPR</option>
+                                  <option value="booking_akad">Booking / Akad</option>
+                                </select>
+                              </div>
+                            </div>
+
+                            <div style={{ marginBottom: '12px' }}>
+                              <label className="apple-label">Catatan / Detail Minat (Opsional)</label>
+                              <input
+                                type="text"
+                                placeholder="Contoh: Tanya simulasi tenor 15 thn, janji survey hari Sabtu..."
+                                className="apple-input"
+                                style={{ backgroundColor: '#ffffff', padding: '8px 11px' }}
+                                value={newLeadNotes}
+                                onChange={(e) => setNewLeadNotes(e.target.value)}
+                              />
+                            </div>
+
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                              <button
+                                type="button"
+                                onClick={() => setIsAddingLead(false)}
+                                className="btn-secondary"
+                                style={{ padding: '6px 14px', fontSize: '0.76rem' }}
+                              >
+                                Batal
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleAddLead}
+                                className="btn-primary"
+                                style={{ padding: '6px 16px', fontSize: '0.76rem' }}
+                              >
+                                Simpan Lead
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Leads Cards / List */}
+                        {Array.isArray(form.leadsList) && form.leadsList.length > 0 ? (
+                          <div
+                            style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '10px',
+                              marginBottom: '16px',
+                            }}
+                          >
+                            {form.leadsList.map((lead) => {
+                              const waUrl = getWhatsAppDirectUrl(lead);
+
+                              return (
+                                <div
+                                  key={lead.id}
+                                  style={{
+                                    backgroundColor: '#ffffff',
+                                    borderRadius: '14px',
+                                    padding: '12px 14px',
+                                    border: '1px solid var(--border-light)',
+                                    display: 'flex',
+                                    flexWrap: 'wrap',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    gap: '10px',
+                                  }}
+                                >
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                      <strong style={{ fontSize: '0.9rem', color: '#1d1d1f' }}>
+                                        {lead.name}
+                                      </strong>
+                                      <span
+                                        className="tabular-num"
+                                        style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}
+                                      >
+                                        {lead.phone}
+                                      </span>
+                                      <span
+                                        className="pill-badge pill-neutral"
+                                        style={{ fontSize: '0.68rem', padding: '2px 8px' }}
+                                      >
+                                        {lead.category === 'subsidi' ? 'Rumah Subsidi' : 'Rumah Komersil'}
+                                      </span>
+                                    </div>
+                                    {lead.notes && (
+                                      <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>
+                                        &bull; {lead.notes}
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                    <select
+                                      aria-label="Ubah Status Lead"
+                                      className="apple-input"
+                                      style={{
+                                        padding: '4px 8px',
+                                        fontSize: '0.74rem',
+                                        fontWeight: 600,
+                                        width: 'auto',
+                                        backgroundColor:
+                                          lead.status === 'booking_akad'
+                                            ? 'var(--success-bg)'
+                                            : lead.status === 'pemberkasan_kpr'
+                                            ? 'var(--accent-soft)'
+                                            : lead.status === 'jadwal_survey'
+                                            ? '#fef3c7'
+                                            : 'var(--bg-secondary)',
+                                        color:
+                                          lead.status === 'booking_akad'
+                                            ? '#166534'
+                                            : lead.status === 'pemberkasan_kpr'
+                                            ? '#0066cc'
+                                            : lead.status === 'jadwal_survey'
+                                            ? '#b45309'
+                                            : 'var(--text-primary)',
+                                      }}
+                                      value={lead.status}
+                                      onChange={(e) =>
+                                        handleUpdateLeadStatus(lead.id, e.target.value as LeadStatus)
+                                      }
+                                    >
+                                      <option value="chat_masuk">Chat Masuk</option>
+                                      <option value="jadwal_survey">Jadwal Survey</option>
+                                      <option value="sudah_survey">Sudah Survey</option>
+                                      <option value="pemberkasan_kpr">Pemberkasan KPR</option>
+                                      <option value="booking_akad">Booking / Akad</option>
+                                    </select>
+
+                                    {lead.phone && (
+                                      <a
+                                        href={waUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="btn-primary"
+                                        style={{
+                                          padding: '5px 12px',
+                                          fontSize: '0.74rem',
+                                          textDecoration: 'none',
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '4px',
+                                          backgroundColor: '#166534',
+                                        }}
+                                      >
+                                        <MessageCircle size={13} />
+                                        <span>Chat WA</span>
+                                        <ExternalLink size={11} />
+                                      </a>
+                                    )}
+
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteLead(lead.id)}
+                                      className="btn-ghost"
+                                      style={{ padding: '5px 7px', color: '#dc2626' }}
+                                      title="Hapus Lead"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div
+                            style={{
+                              backgroundColor: 'var(--bg-secondary)',
+                              borderRadius: '12px',
+                              padding: '12px',
+                              textAlign: 'center',
+                              fontSize: '0.76rem',
+                              color: 'var(--text-muted)',
+                              marginBottom: '16px',
+                            }}
+                          >
+                            Belum ada kontak prospek tersimpan. Klik <strong>+ Tambah Prospek WA</strong> untuk mencatat nama, nomor WA, dan status KPR prospek.
+                          </div>
+                        )}
                       </motion.div>
                     )}
                   </AnimatePresence>
@@ -2255,6 +2745,19 @@ export const DailyInputForm: React.FC<DailyInputFormProps> = ({
           </div>
         </form>
       </div>
+
+      <KprCalculatorModal
+        isOpen={showKprModal}
+        onClose={() => setShowKprModal(false)}
+        initialCategory={form.propertyCategory}
+        projectName={form.projectName}
+      />
+
+      <ContentIdeasModal
+        isOpen={showIdeasModal}
+        onClose={() => setShowIdeasModal(false)}
+        onAddTodo={onAddTodo}
+      />
     </section>
   );
 };

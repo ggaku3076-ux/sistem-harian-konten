@@ -10,6 +10,7 @@ import {
   Clock,
   Copy,
   Edit3,
+  Lightbulb,
   ListChecks,
   PieChart,
   Plus,
@@ -20,6 +21,7 @@ import {
 import { DailyTodoLog, TodoCategory, TodoItem, TodoTab } from '../types/content';
 import { formatDateID, getTodayDateString, shiftDateString } from '../utils/storage';
 import { TodoPerformanceView } from './TodoPerformanceView';
+import { ContentIdeasModal } from './ContentIdeasModal';
 
 interface TodoSectionProps {
   activeTab: TodoTab;
@@ -68,6 +70,21 @@ export const TodoSection: React.FC<TodoSectionProps> = ({
 }) => {
   const [newTitle, setNewTitle] = useState('');
   const [newCategory, setNewCategory] = useState<TodoCategory>('Konten');
+  const [showIdeasModal, setShowIdeasModal] = useState(false);
+
+  const handleAddIdeaToTodo = (title: string, category: TodoCategory) => {
+    const item: TodoItem = {
+      id: `todo-${currentLog.date}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      title,
+      category,
+      completed: false,
+    };
+    onUpdateCurrentLog((prev) => ({
+      ...prev,
+      items: [item, ...prev.items],
+      updatedAt: new Date().toISOString(),
+    }));
+  };
   const [statusFilter, setStatusFilter] = useState<'all' | 'done' | 'pending'>('all');
 
   // State for editing/moving the current report's date to ANY date
@@ -312,25 +329,51 @@ export const TodoSection: React.FC<TodoSectionProps> = ({
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             {/* Add New Todo Card */}
             <form onSubmit={handleAddItem} className="bento-card">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
-                <div
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '10px',
+                  marginBottom: '14px',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div
+                    style={{
+                      width: '32px',
+                      height: '32px',
+                      borderRadius: '9px',
+                      backgroundColor: 'var(--bg-secondary)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Plus size={16} color="#1d1d1f" />
+                  </div>
+                  <div>
+                    <h2 style={{ fontSize: '1rem', fontWeight: 700 }}>
+                      Tambah Agenda / Pekerjaan ({formatDateID(currentLog.date)})
+                    </h2>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowIdeasModal(true)}
+                  className="btn-secondary"
                   style={{
-                    width: '32px',
-                    height: '32px',
-                    borderRadius: '9px',
-                    backgroundColor: 'var(--bg-secondary)',
-                    display: 'flex',
+                    padding: '5px 12px',
+                    fontSize: '0.76rem',
+                    display: 'inline-flex',
                     alignItems: 'center',
-                    justifyContent: 'center',
+                    gap: '5px',
                   }}
                 >
-                  <Plus size={16} color="#1d1d1f" />
-                </div>
-                <div>
-                  <h2 style={{ fontSize: '1rem', fontWeight: 700 }}>
-                    Tambah Agenda / Pekerjaan ({formatDateID(currentLog.date)})
-                  </h2>
-                </div>
+                  <Lightbulb size={13} />
+                  <span>Bank Ide Konten</span>
+                </button>
               </div>
 
               <div
@@ -1028,6 +1071,12 @@ export const TodoSection: React.FC<TodoSectionProps> = ({
           </>
         )}
       </div>
+
+      <ContentIdeasModal
+        isOpen={showIdeasModal}
+        onClose={() => setShowIdeasModal(false)}
+        onAddTodo={handleAddIdeaToTodo}
+      />
     </section>
   );
 };

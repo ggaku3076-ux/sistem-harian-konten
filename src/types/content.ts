@@ -49,6 +49,23 @@ export interface PlatformEngagement {
   waLinkClicks: number;
 }
 
+export type LeadStatus =
+  | 'chat_masuk'
+  | 'jadwal_survey'
+  | 'sudah_survey'
+  | 'pemberkasan_kpr'
+  | 'booking_akad';
+
+export interface ProspectLead {
+  id: string;
+  name: string;
+  phone: string;
+  category: 'subsidi' | 'komersil';
+  status: LeadStatus;
+  notes?: string;
+  createdAt: string;
+}
+
 export interface ContentItemEngagement {
   id: string;
   title: string;
@@ -105,6 +122,7 @@ export interface DailyContentEntry {
   prospectKomersil: number;
   surveyCount: number;
   bookingCount: number;
+  leadsList?: ProspectLead[];
   notes: string;
 
   createdAt: string;

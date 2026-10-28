@@ -1,6 +1,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
+  Briefcase,
   Calendar,
   Check,
   Copy,
@@ -25,6 +26,7 @@ import {
   getCategoryLabel,
   getContentItemTotals,
 } from '../utils/storage';
+import { ExecutiveReportModal } from './ExecutiveReportModal';
 
 interface HistorySectionProps {
   entries: DailyContentEntry[];
@@ -56,6 +58,7 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [editingDateId, setEditingDateId] = useState<string | null>(null);
   const [draftDateValue, setDraftDateValue] = useState('');
+  const [showExecutiveModal, setShowExecutiveModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const filtered = useMemo(() => {
@@ -139,6 +142,15 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
               style={{ display: 'none' }}
               onChange={handleFileUpload}
             />
+            <button
+              type="button"
+              onClick={() => setShowExecutiveModal(true)}
+              className="btn-secondary"
+              style={{ backgroundColor: '#ffffff', padding: '9px 15px', fontSize: '0.82rem' }}
+            >
+              <Briefcase size={14} />
+              <span>Laporan Eksekutif</span>
+            </button>
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
@@ -650,6 +662,13 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
           </div>
         )}
       </div>
+
+      <ExecutiveReportModal
+        isOpen={showExecutiveModal}
+        onClose={() => setShowExecutiveModal(false)}
+        entries={entries}
+        todoLogs={todoLogs}
+      />
     </section>
   );
 };

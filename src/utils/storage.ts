@@ -3,6 +3,7 @@ import {
   DailyContentEntry,
   DailyTargets,
   DailyTodoLog,
+  LeadStatus,
   PlatformEngagement,
   PropertyCategory,
   TodoCategory,
@@ -180,6 +181,7 @@ export function normalizeEntry(raw: Partial<DailyContentEntry>): DailyContentEnt
       instagram: raw.platforms?.instagram ?? fallback.platforms.instagram,
       facebook: raw.platforms?.facebook ?? fallback.platforms.facebook,
     },
+    leadsList: Array.isArray(raw.leadsList) ? raw.leadsList : [],
     engagementByPlatform: legacyEngagementByPlatform,
   });
 }
@@ -230,6 +232,7 @@ export function createEmptyEntry(date: string = getTodayDateString()): DailyCont
     prospectKomersil: 0,
     surveyCount: 0,
     bookingCount: 0,
+    leadsList: [],
     notes: '',
     createdAt: iso,
     updatedAt: iso,
@@ -408,6 +411,23 @@ export function formatLiveDuration(minutes: number): string {
   return rem === 0 ? `${hrs} jam` : `${hrs}j ${rem}m`;
 }
 
+export function getLeadStatusLabel(status: LeadStatus): string {
+  switch (status) {
+    case 'chat_masuk':
+      return 'Chat Masuk';
+    case 'jadwal_survey':
+      return 'Jadwal Survey';
+    case 'sudah_survey':
+      return 'Sudah Survey';
+    case 'pemberkasan_kpr':
+      return 'Pemberkasan KPR';
+    case 'booking_akad':
+      return 'Booking / Akad';
+    default:
+      return status;
+  }
+}
+
 export function formatWhatsAppReport(entry: DailyContentEntry): string {
   const synced = syncTotalEngagement(entry);
   const tt = synced.engagementByPlatform.tiktok;
@@ -427,12 +447,28 @@ export function formatWhatsAppReport(entry: DailyContentEntry): string {
     ? `SUDAH LIVE (${synced.livePlatforms.join('/') || 'Sosmed'} • ${formatLiveDuration(synced.liveDurationMinutes)} • ${formatNumberID(synced.liveViewers)} penonton)`
     : 'Tidak Live';
 
+  const leadsDetail =
+    synced.hasProspect && Array.isArray(synced.leadsList) && synced.leadsList.length > 0
+      ? [
+          `  Daftar Follow-up Leads (${synced.leadsList.length} orang):`,
+          ...synced.leadsList.map(
+            (l, idx) =>
+              `  ${idx + 1}. ${l.name} (${l.phone}) - [${getLeadStatusLabel(l.status)}] [${l.category.toUpperCase()}]${
+                l.notes ? ` - "${l.notes}"` : ''
+              }`
+          ),
+        ].join('\n')
+      : '';
+
   const prospectText = synced.hasProspect
     ? [
         `ADA PROSPEK (${synced.prospectTotal} Leads WA)`,
         `  - Minat Subsidi: ${synced.prospectSubsidi} | Komersil: ${synced.prospectKomersil}`,
         `  - Jadwal Survey: ${synced.surveyCount} | Booking/Berkas: ${synced.bookingCount}`,
-      ].join('\n')
+        leadsDetail,
+      ]
+        .filter(Boolean)
+        .join('\n')
     : 'Belum Ada Prospek Masuk';
 
   const fmtMetricLine = (name: string, m: PlatformEngagement) =>
@@ -724,4 +760,319 @@ export function formatTodoWhatsAppReport(log: DailyTodoLog): string {
   ]
     .filter((line) => line !== '')
     .join('\n');
+}
+
+// ================= SIMULATOR KPR (SUBSIDI & KOMERSIL) =================
+
+export function formatCurrencyID(val: number): string {
+  const safe = Math.round(Number(val) || 0);
+  return 'Rp ' + safe.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+}
+
+export interface KprCalculationResult {
+  housePrice: number;
+  dpAmount: number;
+  dpPercent: number;
+  loanAmount: number;
+  tenorYears: number;
+  annualInterestRate: number;
+  monthlyInstallment: number;
+  totalPayment: number;
+  totalInterest: number;
+  recommendedMinIncome: number;
+}
+
+export function calculateKpr(
+  type: 'subsidi' | 'komersil',
+  housePrice: number,
+  dpAmount: number,
+  tenorYears: number,
+  customInterestRate?: number
+): KprCalculationResult {
+  const safePrice = Math.max(0, housePrice);
+  const safeDp = Math.max(0, Math.min(safePrice, dpAmount));
+  const loanAmount = Math.max(0, safePrice - safeDp);
+  const safeTenor = Math.max(1, tenorYears);
+  const totalMonths = safeTenor * 12;
+  const dpPercent = safePrice > 0 ? (safeDp / safePrice) * 100 : 0;
+
+  if (loanAmount <= 0) {
+    return {
+      housePrice: safePrice,
+      dpAmount: safeDp,
+      dpPercent,
+      loanAmount: 0,
+      tenorYears: safeTenor,
+      annualInterestRate: 0,
+      monthlyInstallment: 0,
+      totalPayment: safeDp,
+      totalInterest: 0,
+      recommendedMinIncome: 0,
+    };
+  }
+
+  let annualInterestRate: number;
+  let monthlyInstallment: number;
+
+  if (type === 'subsidi') {
+    // Subsidi FLPP: 5.0% flat fixed
+    annualInterestRate = customInterestRate ?? 5.0;
+    const monthlyPrincipal = loanAmount / totalMonths;
+    const monthlyInterest = (loanAmount * (annualInterestRate / 100)) / 12;
+    monthlyInstallment = Math.round(monthlyPrincipal + monthlyInterest);
+  } else {
+    // Komersil: Anuitas standar
+    annualInterestRate = customInterestRate ?? 7.75;
+    const monthlyRate = annualInterestRate / 100 / 12;
+    if (monthlyRate === 0) {
+      monthlyInstallment = Math.round(loanAmount / totalMonths);
+    } else {
+      const pmt =
+        (loanAmount * (monthlyRate * Math.pow(1 + monthlyRate, totalMonths))) /
+        (Math.pow(1 + monthlyRate, totalMonths) - 1);
+      monthlyInstallment = Math.round(pmt);
+    }
+  }
+
+  const totalPayment = monthlyInstallment * totalMonths;
+  const totalInterest = Math.max(0, totalPayment - loanAmount);
+  const recommendedMinIncome = Math.round(monthlyInstallment / 0.3);
+
+  return {
+    housePrice: safePrice,
+    dpAmount: safeDp,
+    dpPercent,
+    loanAmount,
+    tenorYears: safeTenor,
+    annualInterestRate,
+    monthlyInstallment,
+    totalPayment,
+    totalInterest,
+    recommendedMinIncome,
+  };
+}
+
+export function formatKprWhatsAppSummary(
+  kpr: KprCalculationResult,
+  type: 'subsidi' | 'komersil',
+  projectName?: string
+): string {
+  const typeLabel = type === 'subsidi' ? 'RUMAH SUBSIDI (FLPP 5% FLAT)' : 'RUMAH KOMERSIL';
+  return [
+    `*SIMULASI ESTIMASI KPR ${typeLabel}*`,
+    projectName ? `Perumahan: ${projectName}` : '',
+    `----------------------------------------`,
+    `• Harga Rumah: ${formatCurrencyID(kpr.housePrice)}`,
+    `• Uang Muka (DP): ${formatCurrencyID(kpr.dpAmount)} (${kpr.dpPercent.toFixed(1)}%)`,
+    `• Plafon KPR (Pokok): ${formatCurrencyID(kpr.loanAmount)}`,
+    `• Tenor Pembiayaan: ${kpr.tenorYears} Tahun (${kpr.tenorYears * 12} Bulan)`,
+    `• Suku Bunga: ${kpr.annualInterestRate}% per tahun${type === 'subsidi' ? ' (Fixed sampai lunas)' : ''}`,
+    `----------------------------------------`,
+    `*ESTIMASI CICILAN: ${formatCurrencyID(kpr.monthlyInstallment)} / bulan*`,
+    `• Rekomendasi Gaji Bersih/Joint Income: Min. ${formatCurrencyID(kpr.recommendedMinIncome)} / bln`,
+    `----------------------------------------`,
+    `_Catatan: Simulasi perkiraan awal. Biaya provisi, administrasi, asuransi jiwa & kebakaran mengikuti ketentuan bank penyalur._`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+// ================= BANK IDE & SCRIPT HOOK KONTEN PROPERTI =================
+
+export interface PropertyIdeaItem {
+  id: string;
+  category: 'Tour & Showcase' | 'Edukasi KPR' | 'Promo & Penawaran' | 'Social Proof' | 'Perbandingan';
+  title: string;
+  hook: string;
+  scriptOutline: string[];
+  callToAction: string;
+}
+
+export const PROPERTY_CONTENT_IDEAS: PropertyIdeaItem[] = [
+  {
+    id: 'idea-1',
+    category: 'Tour & Showcase',
+    title: 'Tour Rumah Subsidi Cicilan Setara Jajan Harian',
+    hook: 'Stop scroll! Rumah 100 jutaan cicilan setara 30 ribu sehari, bentuk aslinya seluas ini?!',
+    scriptOutline: [
+      'Visual hook: Kamera jalan cepat dari depan gerbang cluster ke carport & ruang tamu.',
+      'Jelaskan spesifikasi: 2 Kamar Tidur, 1 Kamar Mandi, sisa tanah belakang sudah diplester.',
+      'Tunjukkan fasilitas: Jalan paving 6 meter, dekat musholla/taman bermain.',
+      'Sebutkan harga & cicilan: Cukup 1 jutaan flat sampai lunas tanpa cemas bunga naik.',
+    ],
+    callToAction: 'Ketik "MAU TOUR" di komentar atau klik link di bio untuk jadwal survey akhir pekan ini!',
+  },
+  {
+    id: 'idea-2',
+    category: 'Edukasi KPR',
+    title: '3 Penyebab Utama Gagal Lolos BI Checking / SLIK OJK',
+    hook: 'Jangan asal booking rumah kalau belum cek 3 hal ini, bisa-bisa DP hangus!',
+    scriptOutline: [
+      'Penyebab 1: Pernah telat bayar paylater/pinjol walau cuma 50 ribu (kolektibilitas 2 ke atas).',
+      'Penyebab 2: Kartu kredit sering mentok limit dan cuma bayar minimum payment.',
+      'Penyebab 3: Rekening koran tidak rapi / banyak transaksi tidak jelas.',
+      'Solusi: Cara pemutihan SLIK dan optimasi mutasi rekening 3 bulan terakhir sebelum akad.',
+    ],
+    callToAction: 'Konsultasi SLIK & kelayakan KPR gratis, klik tombol WhatsApp di bio kami.',
+  },
+  {
+    id: 'idea-3',
+    category: 'Promo & Penawaran',
+    title: 'Promo All-In 1 Juta Terima Kunci (Free Biaya)',
+    hook: 'Gak pake tipu-tipu: Cuma modal 1 juta udah langsung serah terima kunci rumah subsidi!',
+    scriptOutline: [
+      'Bongkar rincian biaya yang digratiskan developer: Free BPHTB, Free AJB, Free BBN, Free Biaya KPR.',
+      'Tegaskan tidak ada biaya siluman di belakang.',
+      'Tampilkan stok unit hook / unit depan yang sisa 3 unit lagi.',
+    ],
+    callToAction: 'Slot promo terbatas 5 peminat pertama minggu ini. Chat admin sekarang via link di profil!',
+  },
+  {
+    id: 'idea-4',
+    category: 'Perbandingan',
+    title: 'Hitung-hitungan: Ngontrak 1.5 Jt vs Cicil Rumah Sendiri',
+    hook: '5 tahun ngontrak habis 90 juta dan tetap numpang. Kenapa ga dipake nyicil rumah ini?',
+    scriptOutline: [
+      'Tulis tabel sederhana: Ngontrak Rp 1.500.000 x 60 bulan = Rp 90.000.000 (uang hilang tanpa sertifikat).',
+      'Cicilan Rumah Subsidi: Rp 1.100.000/bln -> Uang jadi aset milik keluarga sendiri + SHM.',
+      'Rumah makin tahun makin naik harganya, nunggu nanti malah makin gak kebeli.',
+    ],
+    callToAction: 'Jangan tunda lagi masa depan keluarga. Klik link WA di bio untuk simulasi cicilan resmi.',
+  },
+  {
+    id: 'idea-5',
+    category: 'Social Proof',
+    title: 'Testimoni Haru: Pasangan Muda 22 Tahun Resmi Akad',
+    hook: 'Siapa bilang umur 20-an belum bisa punya rumah? Buktinya mereka berdua berhasil akad hari ini!',
+    scriptOutline: [
+      'Tampilkan foto/video senyum pembeli memegang map akad dan kunci simbolis.',
+      'Wawancara singkat 10 detik: "Awalnya ragu berkas wiraswasta ditolak, tapi dibantu developer sampai tuntas."',
+      'Beri semangat bahwa siapapun yang punya kemauan pasti bisa dibantu.',
+    ],
+    callToAction: 'Mau dibantu prosesnya sampai serah terima kunci? Langsung DM atau WA admin kami.',
+  },
+  {
+    id: 'idea-6',
+    category: 'Edukasi KPR',
+    title: 'Wiraswasta / Dagang Bisa Punya KPR Subsidi? Ini Caranya',
+    hook: 'Bukan PNS atau karyawan tetap? Tenang, pedagang dan online shop pun bisa lolos KPR subsidi!',
+    scriptOutline: [
+      'Syarat 1: Buat SKU (Surat Keterangan Usaha) dari kelurahan setempat.',
+      'Syarat 2: Wajib setor omset harian ke rekening bank selama minimal 3-6 bulan.',
+      'Syarat 3: Siapkan pembukuan kas harian/nota belanja sederhana.',
+      'Bank BTN & Bank Syariah menyediakan jalur KPR mikro untuk wirausaha.',
+    ],
+    callToAction: 'Mau cek berkas usaha Anda? Kirim pesan ke WhatsApp kami, tim marketing siap bantu.',
+  },
+  {
+    id: 'idea-7',
+    category: 'Tour & Showcase',
+    title: 'Update Progress Pembangunan Cluster Blok C',
+    hook: 'Intip progres pembangunan perumahan kita minggu ini! Yang sudah booking yuk merapat...',
+    scriptOutline: [
+      'Kamera menyorot dinding bata hebel yang kokoh, rangka atap baja ringan, dan genteng terpasang.',
+      'Tunjukkan saluran air / drainase tertutup dan jalan cor beton rapi.',
+      'Estimasi serah terima kunci bulan depan sesuai jadwal.',
+    ],
+    callToAction: 'Unit tahap 1 sisa 4 lagi. Segera amankan nomor kavling Anda sebelum kehabisan!',
+  },
+  {
+    id: 'idea-8',
+    category: 'Promo & Penawaran',
+    title: 'Bonus AC & Kanopi Khusus Booking Survey Hari Ini',
+    hook: 'Khusus yang survey lokasi hari ini dan langsung booking, kami pasangkan kanopi gratis!',
+    scriptOutline: [
+      'Visual kanopi cantik terpasang di carport unit contoh.',
+      'Jelaskan hemat biaya renovasi hingga 7 juta rupiah.',
+      'Syarat mudah: Cukup survey bersama tim kami dan lock unit.',
+    ],
+    callToAction: 'Jadwalkan kedatangan Anda via WA sekarang, link ada di bio.',
+  },
+];
+
+// ================= GENERATOR LAPORAN EKSEKUTIF =================
+
+export function formatExecutiveReport(
+  entries: DailyContentEntry[],
+  todoLogs: DailyTodoLog[],
+  periodLabel: string = 'Laporan Eksekutif Pemasaran Properti'
+): string {
+  if (entries.length === 0) {
+    return 'Belum ada data laporan harian untuk periode ini.';
+  }
+
+  const sorted = [...entries].sort((a, b) => a.date.localeCompare(b.date));
+  const startDate = sorted[0].date;
+  const endDate = sorted[sorted.length - 1].date;
+
+  const totalContent = sorted.reduce((acc, e) => acc + (e.contentCreated || 0), 0);
+  const totalViews = sorted.reduce((acc, e) => acc + (e.views || 0), 0);
+  const totalLikes = sorted.reduce((acc, e) => acc + (e.likes || 0), 0);
+  const totalComments = sorted.reduce((acc, e) => acc + (e.comments || 0), 0);
+  const totalShares = sorted.reduce((acc, e) => acc + (e.shares || 0), 0);
+  const totalSaves = sorted.reduce((acc, e) => acc + (e.saves || 0), 0);
+  const totalWaClicks = sorted.reduce((acc, e) => acc + (e.waLinkClicks || 0), 0);
+  const totalInteractions = totalLikes + totalComments + totalShares + totalSaves + totalWaClicks;
+  const avgER = totalViews > 0 ? ((totalInteractions / totalViews) * 100).toFixed(2) + '%' : '0.00%';
+
+  const ttViews = sorted.reduce((acc, e) => acc + (e.engagementByPlatform?.tiktok?.views || 0), 0);
+  const igViews = sorted.reduce((acc, e) => acc + (e.engagementByPlatform?.instagram?.views || 0), 0);
+  const fbViews = sorted.reduce((acc, e) => acc + (e.engagementByPlatform?.facebook?.views || 0), 0);
+
+  const totalGroups = sorted.reduce((acc, e) => acc + (e.groupsShared || 0), 0);
+  const totalMarketplace = sorted.reduce((acc, e) => acc + (e.marketplacePosted || 0), 0);
+  const liveDays = sorted.filter((e) => e.isLive).length;
+  const totalLiveDuration = sorted.reduce((acc, e) => acc + (e.isLive ? e.liveDurationMinutes || 0 : 0), 0);
+
+  const totalProspects = sorted.reduce((acc, e) => acc + (e.hasProspect ? e.prospectTotal || 0 : 0), 0);
+  const totalSubsidi = sorted.reduce((acc, e) => acc + (e.hasProspect ? e.prospectSubsidi || 0 : 0), 0);
+  const totalKomersil = sorted.reduce((acc, e) => acc + (e.hasProspect ? e.prospectKomersil || 0 : 0), 0);
+  const totalSurveys = sorted.reduce((acc, e) => acc + (e.hasProspect ? e.surveyCount || 0 : 0), 0);
+  const totalBookings = sorted.reduce((acc, e) => acc + (e.hasProspect ? e.bookingCount || 0 : 0), 0);
+
+  const convLeadToSurvey = totalProspects > 0 ? ((totalSurveys / totalProspects) * 100).toFixed(1) + '%' : '0%';
+  const convSurveyToBooking = totalSurveys > 0 ? ((totalBookings / totalSurveys) * 100).toFixed(1) + '%' : '0%';
+
+  // Todos
+  const allTodoItems = todoLogs.flatMap((l) => l.items);
+  const doneTodos = allTodoItems.filter((i) => i.completed).length;
+  const totalTodos = allTodoItems.length;
+  const todoPct = totalTodos > 0 ? Math.round((doneTodos / totalTodos) * 100) : 0;
+
+  return [
+    `========================================`,
+    `🏢 *${periodLabel.toUpperCase()}*`,
+    `Periode: ${formatDateID(startDate)} s/d ${formatDateID(endDate)} (${sorted.length} Hari Laporan)`,
+    `========================================`,
+    ``,
+    `📊 *1. RINGKASAN PRODUKSI & DISTRIBUSI KONTEN*`,
+    `• Total Konten Diproduksi: ${formatNumberID(totalContent)} video/konten`,
+    `• Total Share Grup Properti: ${formatNumberID(totalGroups)} postingan`,
+    `• Total Iklan FB Marketplace: ${formatNumberID(totalMarketplace)} listing aktif`,
+    `• Sesi Live Streaming: ${liveDays} sesi (${formatLiveDuration(totalLiveDuration)})`,
+    ``,
+    `🔥 *2. PERFORMA & ENGAGEMENT DIGITAL*`,
+    `• Total Penayangan (Views): ${formatNumberID(totalViews)} views`,
+    `  - TikTok Views: ${formatNumberID(ttViews)}`,
+    `  - Instagram Reels Views: ${formatNumberID(igViews)}`,
+    `  - Facebook Video Views: ${formatNumberID(fbViews)}`,
+    `• Total Interaksi Penonton: ${formatNumberID(totalInteractions)} (Likes: ${formatNumberID(totalLikes)}, Komen: ${formatNumberID(totalComments)}, Share: ${formatNumberID(totalShares)})`,
+    `• Total Klik Tautan WhatsApp: ${formatNumberID(totalWaClicks)} klik`,
+    `• Rata-rata Engagement Rate (ER): ${avgER}`,
+    ``,
+    `🎯 *3. PIPELINE LEADS & KONVERSI PENJUALAN*`,
+    `• Total Leads / Chat WA Masuk: ${formatNumberID(totalProspects)} leads`,
+    `  - Minat Rumah Subsidi: ${formatNumberID(totalSubsidi)} prospek`,
+    `  - Minat Rumah Komersil: ${formatNumberID(totalKomersil)} prospek`,
+    `• Total Janji Survey Lokasi: ${formatNumberID(totalSurveys)} calon buyer`,
+    `• Total Booking / Berkas KPR Diajukan: ${formatNumberID(totalBookings)} unit`,
+    `• Rasio Konversi Leads -> Survey: ${convLeadToSurvey}`,
+    `• Rasio Konversi Survey -> Booking: ${convSurveyToBooking}`,
+    ``,
+    `✅ *4. KEDISIPLINAN EKSEKUSI TUGAS (TODO HARIAN)*`,
+    `• Tingkat Penyelesaian Checklist: ${doneTodos}/${totalTodos} tugas (${todoPct}%)`,
+    ``,
+    `========================================`,
+    `_Laporan diekspor secara otomatis melalui PropPulse Digital Marketing System._`,
+  ].join('\n');
 }

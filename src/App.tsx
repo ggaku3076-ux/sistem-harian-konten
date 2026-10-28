@@ -10,6 +10,8 @@ import {
   InputStep,
   PerformanceTab,
   PeriodFilter,
+  TodoCategory,
+  TodoItem,
   TodoTab,
 } from './types/content';
 import {
@@ -366,6 +368,23 @@ export const App: React.FC = () => {
     );
   };
 
+  const handleAddTodoDirect = (title: string, category: TodoCategory = 'Konten') => {
+    handleUpdateCurrentTodo((prev) => {
+      const newItem: TodoItem = {
+        id: `todo-${prev.date}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        title,
+        category,
+        completed: false,
+      };
+      return {
+        ...prev,
+        items: [newItem, ...prev.items],
+        updatedAt: new Date().toISOString(),
+      };
+    });
+    showToast(`Tugas "${title}" ditambahkan ke Todo`);
+  };
+
   const handleUpdateTargets = (nextTargets: DailyTargets) => {
     setTargets(nextTargets);
     saveTargets(nextTargets);
@@ -487,6 +506,7 @@ export const App: React.FC = () => {
                 onLoadExistingDate={handleEditEntry}
                 onCopyWhatsApp={handleCopyWhatsApp}
                 onUpdateTargets={handleUpdateTargets}
+                onAddTodo={handleAddTodoDirect}
               />
             </motion.div>
           )}
